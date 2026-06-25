@@ -1,4 +1,8 @@
-export type UserRole = 'Administrator' | 'Doctor' | 'Nurse' | 'Midwife' | 'Medical Technologist'
+export type AccessRole = 'Admin' | 'Doctor' | 'Nurse' | 'Midwife' | 'Medical Technologist'
+
+export type UserRole = AccessRole | 'Administrator'
+
+export type DatabaseRole = 'admin' | 'staff'
 
 export type ProgramType = 'Supsup Todo' | "Mom's Act" | 'Milky Way'
 
@@ -34,6 +38,25 @@ export interface AppUser {
   name: string
   role: UserRole
   initials: string
+}
+
+export interface AccessAccount {
+  id: string
+  fullName: string
+  email: string
+  role: AccessRole
+  databaseRole: DatabaseRole
+  department: string
+  isActive: boolean
+  password: string
+  lastSeenAt: string | null
+  createdAt: string
+}
+
+export interface CreateAccessAccountInput {
+  fullName: string
+  email: string
+  password: string
 }
 
 export interface Donor {
@@ -161,3 +184,4 @@ export type Screen =
   | 'dispensing'
   | 'reports'
   | 'audit'
+  | 'users'
