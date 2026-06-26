@@ -185,3 +185,4 @@ export type Screen =
   | 'reports'
   | 'audit'
   | 'users'
+  | 'settings'

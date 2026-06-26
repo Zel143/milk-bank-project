@@ -16,6 +16,7 @@ import { SMSNotificationsScreen } from './components/screens/SMSNotificationsScr
 import { DispensingScreen } from './components/screens/DispensingScreen'
 import { ReportsScreen } from './components/screens/ReportsScreen'
 import { AuditLogScreen } from './components/screens/AuditLogScreen'
+import { AccountSettingsScreen } from './components/screens/AccountSettingsScreen'
 import { supabase } from '../lib/supabase'
 
 function ScreenContent({
@@ -54,6 +55,8 @@ function ScreenContent({
       return <AuditLogScreen />
     case 'users':
       return <AdminAccountsScreen />
+    case 'settings':
+      return <AccountSettingsScreen user={user} />
     default:
       return <DashboardScreen onNavigate={onNavigate} />
   }

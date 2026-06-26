@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Droplets, FlaskConical, Thermometer,
   Archive, HeartHandshake, ClipboardList, MessageSquare, Send,
   FileBarChart2, ScrollText, ChevronLeft, ChevronRight,
-  UserCog, LogOut, Menu, Search, Bell
+  UserCog, LogOut, Menu, Search, Bell, Settings
 } from 'lucide-react'
 import type { AppUser, Screen } from '../types'
 
@@ -93,6 +93,7 @@ export function Layout({ user, currentScreen, onNavigate, onLogout, children }: 
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
   const isAdmin = user.role === 'Administrator'
 
   const SidebarContent = () => (
@@ -199,35 +200,7 @@ export function Layout({ user, currentScreen, onNavigate, onLogout, children }: 
           )
         })}
       </nav>
-
-      {/* Footer */}
       <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="px-4 py-3 flex items-center gap-3">
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px]"
-            style={{ background: '#eea4bb', color: '#322e2d', fontFamily: 'var(--font-family-mono)', fontWeight: 600 }}
-          >
-            {user.initials}
-          </div>
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <div className="text-xs text-[#d4cfc8] truncate" style={{ fontWeight: 500 }}>{user.name}</div>
-              <div className="text-[10px] truncate" style={{ color: '#7a7573', fontFamily: 'var(--font-family-mono)' }}>
-                {user.role}
-              </div>
-            </div>
-          )}
-          {!collapsed && (
-            <button
-              onClick={onLogout}
-              className="p-1 rounded-lg transition-colors hover:bg-[rgba(255,255,255,0.06)]"
-              title="Sign out"
-            >
-              <LogOut className="w-3.5 h-3.5 text-[#5a5655] hover:text-[#9a9694]" />
-            </button>
-          )}
-        </div>
-
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="hidden lg:flex w-full items-center justify-center gap-1.5 px-4 py-2.5 text-[11px] transition-colors hover:bg-[rgba(255,255,255,0.04)]"
@@ -345,26 +318,31 @@ export function Layout({ user, currentScreen, onNavigate, onLogout, children }: 
               />
             </button>
 
-            <button
-              onClick={onLogout}
-              className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-xl hover:bg-[#F8F0F4] transition-colors"
-              title="Sign out"
-            >
-              <div
-                className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] shrink-0"
-                style={{ background: '#eea4bb', color: '#322e2d', fontFamily: 'var(--font-family-mono)', fontWeight: 600 }}
+            <div className="relative">
+              <button
+                onClick={() => setAccountOpen((current) => !current)}
+                className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-xl hover:bg-[#F8F0F4] transition-colors"
+                aria-haspopup="menu"
+                aria-expanded={accountOpen}
               >
-                {user.initials}
-              </div>
-              <div className="hidden sm:block text-left">
-                <div className="text-xs text-[#322e2d] leading-none" style={{ fontWeight: 600 }}>
-                  {user.name.split(',')[0]}
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] shrink-0"
+                  style={{ background: '#eea4bb', color: '#322e2d', fontFamily: 'var(--font-family-mono)', fontWeight: 600 }}
+                >
+                  {user.initials}
                 </div>
-                <div className="text-[10px] text-[#636260] leading-none mt-0.5" style={{ fontFamily: 'var(--font-family-mono)' }}>
-                  {user.role}
+                <div className="hidden sm:block text-left">
+                  <div className="text-xs text-[#322e2d] leading-none" style={{ fontWeight: 600 }}>{user.name.split(',')[0]}</div>
+                  <div className="text-[10px] text-[#636260] leading-none mt-0.5" style={{ fontFamily: 'var(--font-family-mono)' }}>{user.role}</div>
                 </div>
-              </div>
-            </button>
+              </button>
+              {accountOpen && (
+                <div className="absolute right-0 top-11 z-50 w-48 rounded-xl border bg-white p-1 shadow-lg">
+                  <button onClick={() => { onNavigate('settings'); setAccountOpen(false) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-[#322e2d] hover:bg-[#F8F0F4]"><Settings className="w-4 h-4" />Settings</button>
+                  <button onClick={onLogout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-[#322e2d] hover:bg-[#F8F0F4]"><LogOut className="w-4 h-4" />Logout</button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
