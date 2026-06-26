@@ -5,11 +5,7 @@ import type { AccessRole, CreateAccessAccountInput } from '../../types'
 
 interface LoginScreenProps {
   onLogin: (credentials: { email: string; password: string }) => void
-<<<<<<< HEAD
-  onRegisterRequest: (account: CreateAccessAccountInput) => void
-=======
   onRegisterRequest: (account: CreateAccessAccountInput) => Promise<boolean>
->>>>>>> 50d69b7a55e851b0dfcfa93ae047e6afafe71617
   notice?: string
   error?: string
   prefillEmail?: string
@@ -112,13 +108,8 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
           <div className="space-y-3">
             {[
               { icon: Shield, label: 'Supabase Auth backed sessions', color: '#eea4bb' },
-<<<<<<< HEAD
-              { icon: Zap, label: 'Profile roles tracked in the database', color: '#bdbdbb' },
-              { icon: Heart, label: 'Access approvals managed by the admin desk', color: '#eea4bb' },
-=======
               { icon: Zap, label: 'Staff role assigned at registration', color: '#bdbdbb' },
               { icon: Heart, label: 'Email confirmation required before sign-in', color: '#eea4bb' },
->>>>>>> 50d69b7a55e851b0dfcfa93ae047e6afafe71617
             ].map((feature) => {
               const Icon = feature.icon
               return (
@@ -136,11 +127,7 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
         <div className="px-10 pb-8">
           <div className="grid grid-cols-3 gap-4 mb-6 p-4 rounded-2xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
             {[
-<<<<<<< HEAD
-              { value: '5', label: 'Access Roles' },
-=======
               { value: '2', label: 'Access Roles' },
->>>>>>> 50d69b7a55e851b0dfcfa93ae047e6afafe71617
               { value: '1', label: 'Source of Truth' },
               { value: '0', label: 'Demo Accounts' },
             ].map((stat) => (
@@ -177,11 +164,7 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
               <p className="text-sm text-[#636260] leading-relaxed max-w-md">
                 {mode === 'login'
                   ? 'Sign in with your approved staff account. Admin access opens account management.'
-<<<<<<< HEAD
-                  : 'Register a new access account. Accounts must be activated by an admin before use.'}
-=======
                   : 'Register a staff account. Confirm your email before signing in.'}
->>>>>>> 50d69b7a55e851b0dfcfa93ae047e6afafe71617
               </p>
             </div>
           </div>
@@ -328,11 +311,7 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
 
           <div className="mt-6 flex items-center justify-center gap-3 text-xs text-[#636260]">
             <p className="leading-relaxed">
-<<<<<<< HEAD
-              New staff can create an access request from the registration page.
-=======
               New staff accounts are created with staff access after email confirmation.
->>>>>>> 50d69b7a55e851b0dfcfa93ae047e6afafe71617
             </p>
           </div>
         </motion.div>

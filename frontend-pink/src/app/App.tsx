@@ -97,11 +97,7 @@ export default function App() {
       setUser(null)
       setStatusError('No access profile found for this account. Please wait for an admin to set up your profile.')
       setIsInitializing(false)
-<<<<<<< HEAD
-      return
-=======
       return false
->>>>>>> 50d69b7a55e851b0dfcfa93ae047e6afafe71617
     }
 
     if (!data.is_active) {
@@ -109,11 +105,7 @@ export default function App() {
       setUser(null)
       setStatusError('That account is disabled. An administrator must reactivate it before sign in.')
       setIsInitializing(false)
-<<<<<<< HEAD
-      return
-=======
       return false
->>>>>>> 50d69b7a55e851b0dfcfa93ae047e6afafe71617
     }
 
     const initials = data.full_name
@@ -144,11 +136,7 @@ export default function App() {
     }
   }
 
-<<<<<<< HEAD
-  async function handleRegisterRequest(account: CreateAccessAccountInput): Promise<void> {
-=======
   async function handleRegisterRequest(account: CreateAccessAccountInput): Promise<boolean> {
->>>>>>> 50d69b7a55e851b0dfcfa93ae047e6afafe71617
     setStatusError(undefined)
     setStatusNotice(undefined)
     const { data, error } = await supabase.auth.signUp({
@@ -157,50 +145,29 @@ export default function App() {
       options: {
         data: {
           full_name: account.fullName,
-<<<<<<< HEAD
-=======
           role: 'staff',
->>>>>>> 50d69b7a55e851b0dfcfa93ae047e6afafe71617
         }
       }
     })
 
     if (error) {
       setStatusError(error.message)
-<<<<<<< HEAD
-      return
-    }
-
-    if (data.user) {
-      // Create profile manually since there is no trigger
-      const { error: profileError } = await supabase.from('profiles').insert({
-=======
       return false
     }
 
     if (data.user) {
       // Create profile manually since this frontend does not rely on a database trigger yet.
       const { error: profileError } = await supabase.from('profiles').upsert({
->>>>>>> 50d69b7a55e851b0dfcfa93ae047e6afafe71617
         id: data.user.id,
         email: account.email.toLowerCase(),
         full_name: account.fullName,
         role: 'staff',
-<<<<<<< HEAD
-        is_active: false,
-      })
-
-      if (profileError) {
-        setStatusError('Account created but failed to stage profile: ' + profileError.message)
-        return
-=======
         is_active: true,
       }, { onConflict: 'id' })
 
       if (profileError) {
         setStatusError('Account created but failed to stage profile: ' + profileError.message)
         return false
->>>>>>> 50d69b7a55e851b0dfcfa93ae047e6afafe71617
       }
 
       // Supabase signUp automatically logs in if email confirmation is off. 
