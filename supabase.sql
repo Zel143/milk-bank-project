@@ -12,7 +12,6 @@ CREATE TABLE public.profiles (
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
   CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );
-
 CREATE TABLE public.donors (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   dtn_number bigint GENERATED ALWAYS AS IDENTITY NOT NULL UNIQUE,
@@ -35,7 +34,6 @@ CREATE TABLE public.donors (
   CONSTRAINT donors_pkey PRIMARY KEY (id),
   CONSTRAINT donors_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
 );
-
 CREATE TABLE public.donor_screenings (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   donor_id uuid NOT NULL,
@@ -67,7 +65,6 @@ CREATE TABLE public.donor_screenings (
   CONSTRAINT donor_screenings_donor_id_fkey FOREIGN KEY (donor_id) REFERENCES public.donors(id),
   CONSTRAINT donor_screenings_screened_by_fkey FOREIGN KEY (screened_by) REFERENCES public.profiles(id)
 );
-
 CREATE TABLE public.collections (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   ctn_number bigint GENERATED ALWAYS AS IDENTITY NOT NULL UNIQUE,
@@ -89,7 +86,6 @@ CREATE TABLE public.collections (
   CONSTRAINT collections_donor_id_fkey FOREIGN KEY (donor_id) REFERENCES public.donors(id),
   CONSTRAINT collections_collected_by_fkey FOREIGN KEY (collected_by) REFERENCES public.profiles(id)
 );
-
 CREATE TABLE public.batches (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   batch_number_seq bigint GENERATED ALWAYS AS IDENTITY NOT NULL UNIQUE,
@@ -105,7 +101,6 @@ CREATE TABLE public.batches (
   CONSTRAINT batches_pkey PRIMARY KEY (id),
   CONSTRAINT batches_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
 );
-
 CREATE TABLE public.batch_collections (
   batch_id uuid NOT NULL,
   collection_id uuid NOT NULL,
@@ -115,7 +110,6 @@ CREATE TABLE public.batch_collections (
   CONSTRAINT batch_collections_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.batches(id),
   CONSTRAINT batch_collections_collection_id_fkey FOREIGN KEY (collection_id) REFERENCES public.collections(id)
 );
-
 CREATE TABLE public.lab_results (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   batch_id uuid NOT NULL,
@@ -126,6 +120,7 @@ CREATE TABLE public.lab_results (
   result text NOT NULL DEFAULT 'pending'::text CHECK (result = ANY (ARRAY['pending'::text, 'passed'::text, 'failed'::text])),
   result_received_at timestamp with time zone,
   recorded_by uuid,
+  recorded_by_name text,
   notes text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -133,7 +128,6 @@ CREATE TABLE public.lab_results (
   CONSTRAINT lab_results_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.batches(id),
   CONSTRAINT lab_results_recorded_by_fkey FOREIGN KEY (recorded_by) REFERENCES public.profiles(id)
 );
-
 CREATE TABLE public.pasteurization_records (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   batch_id uuid NOT NULL UNIQUE,
@@ -148,7 +142,6 @@ CREATE TABLE public.pasteurization_records (
   CONSTRAINT pasteurization_records_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.batches(id),
   CONSTRAINT pasteurization_records_performed_by_fkey FOREIGN KEY (performed_by) REFERENCES public.profiles(id)
 );
-
 CREATE TABLE public.bottles (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   bottle_number_seq bigint GENERATED ALWAYS AS IDENTITY NOT NULL UNIQUE,
@@ -164,7 +157,6 @@ CREATE TABLE public.bottles (
   CONSTRAINT bottles_pkey PRIMARY KEY (id),
   CONSTRAINT bottles_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.batches(id)
 );
-
 CREATE TABLE public.beneficiaries (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   guardian_name text NOT NULL,
@@ -181,7 +173,6 @@ CREATE TABLE public.beneficiaries (
   CONSTRAINT beneficiaries_pkey PRIMARY KEY (id),
   CONSTRAINT beneficiaries_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
 );
-
 CREATE TABLE public.inquiries (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   beneficiary_id uuid NOT NULL,
@@ -201,7 +192,6 @@ CREATE TABLE public.inquiries (
   CONSTRAINT inquiries_beneficiary_id_fkey FOREIGN KEY (beneficiary_id) REFERENCES public.beneficiaries(id),
   CONSTRAINT inquiries_handled_by_fkey FOREIGN KEY (handled_by) REFERENCES public.profiles(id)
 );
-
 CREATE TABLE public.pricing_config (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   price_per_ml numeric NOT NULL CHECK (price_per_ml >= 0::numeric),
@@ -213,7 +203,6 @@ CREATE TABLE public.pricing_config (
   CONSTRAINT pricing_config_pkey PRIMARY KEY (id),
   CONSTRAINT pricing_config_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
 );
-
 CREATE TABLE public.dispensing_records (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   beneficiary_id uuid NOT NULL,
@@ -240,7 +229,6 @@ CREATE TABLE public.dispensing_records (
   CONSTRAINT dispensing_records_pricing_config_id_fkey FOREIGN KEY (pricing_config_id) REFERENCES public.pricing_config(id),
   CONSTRAINT dispensing_records_dispensed_by_fkey FOREIGN KEY (dispensed_by) REFERENCES public.profiles(id)
 );
-
 CREATE TABLE public.dispensing_items (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   dispensing_record_id uuid NOT NULL,
@@ -251,7 +239,6 @@ CREATE TABLE public.dispensing_items (
   CONSTRAINT dispensing_items_dispensing_record_id_fkey FOREIGN KEY (dispensing_record_id) REFERENCES public.dispensing_records(id),
   CONSTRAINT dispensing_items_bottle_id_fkey FOREIGN KEY (bottle_id) REFERENCES public.bottles(id)
 );
-
 CREATE TABLE public.email_notifications (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   inquiry_id uuid,
@@ -270,7 +257,6 @@ CREATE TABLE public.email_notifications (
   CONSTRAINT email_notifications_inquiry_id_fkey FOREIGN KEY (inquiry_id) REFERENCES public.inquiries(id),
   CONSTRAINT email_notifications_beneficiary_id_fkey FOREIGN KEY (beneficiary_id) REFERENCES public.beneficiaries(id)
 );
-
 CREATE TABLE public.audit_logs (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   table_name text NOT NULL,
