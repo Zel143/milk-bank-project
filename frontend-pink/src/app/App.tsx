@@ -213,8 +213,13 @@ export default function App() {
 
     if (error) {
       const msg = error.message ?? ''
+      const status = (error as { status?: number }).status
       if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('user already exists')) {
         setStatusError('An account with that email already exists. Try signing in instead.')
+      } else if (status === 500 || msg.toLowerCase().includes('database error') || msg.toLowerCase().includes('internal server error')) {
+        setStatusError(
+          'Email delivery failed. Check that your SMTP credentials are correct in the Supabase dashboard (Authentication → SMTP Settings). If using Gmail, ensure 2-Step Verification is on and you are using an App Password without spaces.',
+        )
       } else {
         setStatusError(msg || 'Registration failed. Please try again.')
       }

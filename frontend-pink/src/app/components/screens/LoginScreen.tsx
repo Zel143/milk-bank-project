@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Droplets, Eye, EyeOff } from 'lucide-react'
 import type { CreateAccessAccountInput } from '../../types'
 import { supabase } from '../../../lib/supabase'
@@ -13,6 +13,7 @@ interface LoginScreenProps {
 }
 
 export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefillEmail }: LoginScreenProps) {
+  const shouldReduceMotion = useReducedMotion()
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState(prefillEmail ?? '')
   const [password, setPassword] = useState('')
@@ -188,7 +189,12 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
       </div>
 
       <div className="flex-1 flex items-center justify-center p-6 sm:p-8">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 200, damping: 24 }} className="w-full max-w-[560px]">
+        <motion.div
+          initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 24 }}
+          className="w-full max-w-[560px]"
+        >
           <div className="flex lg:hidden items-center gap-2 mb-10">
             <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#eea4bb' }}>
               <Droplets className="w-4 h-4" style={{ color: '#322e2d' }} />
@@ -211,9 +217,15 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
             </div>
           </div>
 
-          <div className="mb-6 inline-flex rounded-2xl border p-1" style={{ background: '#FFFFFF', borderColor: 'rgba(99,98,96,0.12)' }}>
+          <div
+            role="group"
+            aria-label="Authentication mode"
+            className="mb-6 inline-flex rounded-2xl border p-1"
+            style={{ background: '#FFFFFF', borderColor: 'rgba(99,98,96,0.12)' }}
+          >
             <button
               type="button"
+              aria-pressed={mode === 'login'}
               onClick={() => switchMode('login')}
               className="px-4 py-2 text-sm rounded-xl transition-colors"
               style={{ background: mode === 'login' ? '#eea4bb' : 'transparent', color: '#322e2d', fontWeight: 700 }}
@@ -222,6 +234,7 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
             </button>
             <button
               type="button"
+              aria-pressed={mode === 'register'}
               onClick={() => switchMode('register')}
               className="px-4 py-2 text-sm rounded-xl transition-colors"
               style={{ background: mode === 'register' ? '#eea4bb' : 'transparent', color: '#322e2d', fontWeight: 700 }}
@@ -230,28 +243,29 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
             </button>
           </div>
 
-          <AnimatePresence>
-            {(localError || error || notice) && (
-              <motion.div
-                key={localError ?? error ?? notice}
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-                className="mb-4 rounded-xl border px-4 py-3 text-sm leading-relaxed"
-                style={{
-                  background: (localError || error) ? '#FFF0F2' : '#F0F7F4',
-                  borderColor: (localError || error)
-                    ? 'rgba(192,64,64,0.22)'
-                    : 'rgba(52,168,83,0.22)',
-                  color: '#322e2d',
-                }}
-                aria-live="polite"
-              >
-                {localError ?? error ?? notice}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <div aria-live="polite" aria-atomic="true">
+            <AnimatePresence>
+              {(localError || error || notice) && (
+                <motion.div
+                  key={localError ?? error ?? notice}
+                  initial={shouldReduceMotion ? false : { opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={shouldReduceMotion ? {} : { opacity: 0, y: -6 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+                  className="mb-4 rounded-xl border px-4 py-3 text-sm leading-relaxed"
+                  style={{
+                    background: (localError || error) ? '#FFF0F2' : '#F0F7F4',
+                    borderColor: (localError || error)
+                      ? 'rgba(192,64,64,0.22)'
+                      : 'rgba(52,168,83,0.22)',
+                    color: '#322e2d',
+                  }}
+                >
+                  {localError ?? error ?? notice}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           <form onSubmit={mode === 'login' ? handleLoginSubmit : handleRegisterSubmit} className="space-y-4">
             {mode === 'register' && (
@@ -263,11 +277,13 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
                   id="register-name"
                   name="fullName"
                   type="text"
+                  autoComplete="name"
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   onFocus={() => setFocusedField('fullName')}
                   onBlur={() => setFocusedField(null)}
+                  placeholder="e.g. Maria Santos…"
                   maxLength={100}
                   className="w-full px-4 py-3 rounded-xl border text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#eea4bb]/30"
                   style={{ background: '#FFFFFF', borderColor: focusedField === 'fullName' ? '#eea4bb' : 'rgba(99,98,96,0.15)', color: '#322e2d', boxShadow: focusedField === 'fullName' ? '0 0 0 3px rgba(238,164,187,0.15)' : 'none' }}
@@ -283,7 +299,7 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
                 id="login-email"
                 name="email"
                 type="email"
-                autoComplete={mode === 'login' ? 'email' : 'off'}
+                autoComplete="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -312,7 +328,8 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
                   onChange={(e) => setPassword(e.target.value)}
                   onFocus={() => setFocusedField('password')}
                   onBlur={() => setFocusedField(null)}
-                  placeholder={mode === 'login' ? 'Enter your password' : 'Create a password'}
+                  placeholder={mode === 'login' ? 'Enter your password…' : 'Min. 6 characters…'}
+                  minLength={mode === 'register' ? 6 : undefined}
                   maxLength={128}
                   className="w-full px-4 py-3 pr-11 rounded-xl border text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#eea4bb]/30"
                   style={{ background: '#FFFFFF', borderColor: focusedField === 'password' ? '#eea4bb' : 'rgba(99,98,96,0.15)', color: '#322e2d', boxShadow: focusedField === 'password' ? '0 0 0 3px rgba(238,164,187,0.15)' : 'none' }}
@@ -345,9 +362,10 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
               {loading ? (
                 <>
                   <motion.div
-                    animate={{ rotate: 360 }}
+                    animate={shouldReduceMotion ? {} : { rotate: 360 }}
                     transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                     className="w-4 h-4 rounded-full border-2 border-[#322e2d] border-t-transparent"
+                    aria-hidden="true"
                   />
                   {mode === 'login' ? 'Signing in…' : 'Creating account…'}
                 </>
