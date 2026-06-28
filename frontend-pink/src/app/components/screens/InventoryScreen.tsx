@@ -4,6 +4,7 @@ import { PageHeader } from '../shared/PageHeader'
 import { StatusBadge } from '../shared/StatusBadge'
 import { supabase } from '../../../lib/supabase'
 import { toProgramLabel, toTitle } from '../../exportUtils'
+import { useProgramFilter } from '../../../lib/programContext'
 
 type Batch = {
   id: string
@@ -26,11 +27,15 @@ export function InventoryScreen() {
       .then(({ data }) => setRows((data ?? []) as Batch[]))
   }, [])
 
+  const activeProgram = useProgramFilter()
+
   const filtered = useMemo(
-    () => rows.filter((r) =>
-      [r.batch_number, r.status, r.program].join(' ').toLowerCase().includes(search.toLowerCase())
-    ),
-    [rows, search]
+    () => rows.filter((r) => {
+      const matchesSearch = [r.batch_number, r.status, r.program].join(' ').toLowerCase().includes(search.toLowerCase())
+      const matchesProgram = activeProgram === 'All' || toProgramLabel(r.program) === activeProgram
+      return matchesSearch && matchesProgram
+    }),
+    [rows, search, activeProgram]
   )
 
   const summary = rows.reduce<Record<string, number>>((acc, row) => {

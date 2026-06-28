@@ -4,6 +4,7 @@ import { PageHeader } from '../shared/PageHeader'
 import { StatusBadge } from '../shared/StatusBadge'
 import { supabase } from '../../../lib/supabase'
 import { exportCsv, fromProgramLabel, toProgramLabel, toTitle, type ExportRow } from '../../exportUtils'
+import { useProgramFilter } from '../../../lib/programContext'
 import { motion, AnimatePresence } from 'motion/react'
 
 type DonorRow = {
@@ -64,9 +65,15 @@ export function DonorManagementScreen() {
 
   useEffect(() => { void load() }, [])
 
+  const activeProgram = useProgramFilter()
+
   const filtered = useMemo(
-    () => rows.filter((row) => [row.dtn, row.full_name, row.contact_number].join(' ').toLowerCase().includes(search.toLowerCase())),
-    [rows, search]
+    () => rows.filter((row) => {
+      const matchesSearch = [row.dtn, row.full_name, row.contact_number].join(' ').toLowerCase().includes(search.toLowerCase())
+      const matchesProgram = activeProgram === 'All' || toProgramLabel(row.primary_program) === activeProgram
+      return matchesSearch && matchesProgram
+    }),
+    [rows, search, activeProgram]
   )
   const exportRows: ExportRow[] = filtered.map((row) => ({
     DTN: row.dtn, Name: row.full_name, Program: toProgramLabel(row.primary_program),

@@ -4,6 +4,7 @@ import { PageHeader } from '../shared/PageHeader'
 import { StatusBadge } from '../shared/StatusBadge'
 import { supabase } from '../../../lib/supabase'
 import { fromProgramLabel, formatDate, toProgramLabel } from '../../exportUtils'
+import { useProgramFilter } from '../../../lib/programContext'
 import { motion, AnimatePresence } from 'motion/react'
 
 type Donor = { id: string; dtn: string | null; full_name: string; primary_program: string }
@@ -69,9 +70,15 @@ export function MilkCollectionScreen() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  const activeProgram = useProgramFilter()
+
   const filteredCollections = useMemo(
-    () => rows.filter((row) => [row.ctn, row.donors?.dtn, row.donors?.full_name].join(' ').toLowerCase().includes(search.toLowerCase())),
-    [rows, search]
+    () => rows.filter((row) => {
+      const matchesSearch = [row.ctn, row.donors?.dtn, row.donors?.full_name].join(' ').toLowerCase().includes(search.toLowerCase())
+      const matchesProgram = activeProgram === 'All' || toProgramLabel(row.program) === activeProgram
+      return matchesSearch && matchesProgram
+    }),
+    [rows, search, activeProgram]
   )
 
   const filteredDonors = useMemo(
