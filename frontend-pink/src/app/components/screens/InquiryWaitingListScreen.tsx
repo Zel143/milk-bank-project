@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { Plus, X, Clock } from 'lucide-react'
+import { Plus, X, Clock, Bell, CheckCircle } from 'lucide-react'
 import { PageHeader } from '../shared/PageHeader'
 import { StatusBadge } from '../shared/StatusBadge'
 import { supabase } from '../../../lib/supabase'
@@ -12,24 +12,29 @@ type Inquiry = { id: string; inquiry_type: string; status: string; requested_at:
 export function InquiryWaitingListScreen() {
   const [rows, setRows] = useState<Inquiry[]>([])
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([])
+  const [availableMl, setAvailableMl] = useState<number | null>(null)
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-  
+  const [notifying, setNotifying] = useState<string | null>(null)
+
   const [activeTab, setActiveTab] = useState<'active' | 'waiting'>('active')
 
   // Form state
   const [inquiryType, setInquiryType] = useState<'walk_in' | 'hotline_call'>('walk_in')
   const [nicuConfirmed, setNicuConfirmed] = useState(false)
 
-  async function load(): Promise<void> { 
-    const [{ data: inq }, { data: bens }] = await Promise.all([
-      supabase.from('inquiries').select('id,inquiry_type,status,requested_at,nicu_confirmed,notes,beneficiaries(id,guardian_name,baby_name,nicu_eligible)').order('requested_at', { ascending: false }), 
-      supabase.from('beneficiaries').select('id,guardian_name,baby_name,nicu_eligible').order('guardian_name')
+  async function load(): Promise<void> {
+    const [{ data: inq }, { data: bens }, { data: bottles }] = await Promise.all([
+      supabase.from('inquiries').select('id,inquiry_type,status,requested_at,nicu_confirmed,notes,beneficiaries(id,guardian_name,baby_name,nicu_eligible)').order('requested_at', { ascending: false }),
+      supabase.from('beneficiaries').select('id,guardian_name,baby_name,nicu_eligible').order('guardian_name'),
+      supabase.from('bottles').select('remaining_volume_ml').eq('status', 'available'),
     ])
     setRows((inq ?? []) as Inquiry[])
-    setBeneficiaries((bens ?? []) as Beneficiary[]) 
+    setBeneficiaries((bens ?? []) as Beneficiary[])
+    const totalMl = (bottles ?? []).reduce((sum: number, b: { remaining_volume_ml: number }) => sum + Number(b.remaining_volume_ml ?? 0), 0)
+    setAvailableMl(totalMl)
   }
-  
+
   useEffect(() => { void load() }, [])
 
   const activeInquiries = useMemo(() => rows.filter(r => r.status !== 'waiting'), [rows])
@@ -37,29 +42,42 @@ export function InquiryWaitingListScreen() {
 
   const displayedRows = activeTab === 'active' ? activeInquiries : waitingList
 
-  async function save(event: React.FormEvent<HTMLFormElement>): Promise<void> { 
+  async function save(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (!nicuConfirmed) {
       alert('You must confirm NICU admission.')
       return
     }
-    
+
     setSaving(true)
     const form = new FormData(event.currentTarget)
-    
-    await supabase.from('inquiries').insert({ 
-      beneficiary_id: String(form.get('beneficiary_id')), 
-      inquiry_type: inquiryType, 
-      status: 'waiting', 
-      nicu_confirmed: nicuConfirmed, 
-      notes: String(form.get('notes') ?? '') 
+
+    await supabase.from('inquiries').insert({
+      beneficiary_id: String(form.get('beneficiary_id')),
+      inquiry_type: inquiryType,
+      status: 'waiting',
+      nicu_confirmed: nicuConfirmed,
+      notes: String(form.get('notes') ?? '')
     })
-    
+
     setSaving(false)
     setOpen(false)
     setNicuConfirmed(false)
     setInquiryType('walk_in')
-    await load() 
+    await load()
+  }
+
+  async function markAsNotified(inquiry: Inquiry): Promise<void> {
+    setNotifying(inquiry.id)
+    await supabase.from('inquiries').update({ status: 'notified' }).eq('id', inquiry.id)
+    // Write a paper-trail record into email_notifications
+    await supabase.from('email_notifications').insert({
+      inquiry_id: inquiry.id,
+      recipient_name: inquiry.beneficiaries?.guardian_name ?? 'Unknown',
+      status: 'pending',
+    })
+    setNotifying(null)
+    await load()
   }
 
   function calculateDaysWaiting(requestedAt: string) {
@@ -69,30 +87,49 @@ export function InquiryWaitingListScreen() {
     const diff = Math.floor((now - start) / (1000 * 60 * 60 * 24))
     return `${Math.max(0, diff)}d`
   }
-  
+
+  const colCount = activeTab === 'active' ? 9 : 8
+
   return (
     <div className="space-y-6">
-      <PageHeader 
-        crumbs={[{ label: 'Recipients' }, { label: 'Inquiry & Waiting List' }]} 
-        title="Inquiry & Waiting List" 
-        subtitle="Log availability inquiries and manage the NICU priority waiting list" 
+      <PageHeader
+        crumbs={[{ label: 'Recipients' }, { label: 'Inquiry & Waiting List' }]}
+        title="Inquiry & Waiting List"
+        subtitle="Log availability inquiries and manage the NICU priority waiting list"
         actions={
           <button onClick={() => setOpen(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-xl shadow-sm transition-all hover:opacity-90" style={{ background: '#f472b6' }}>
             <Plus className="w-4 h-4" />Log Inquiry
           </button>
-        } 
+        }
       />
+
+      {/* G6: Inventory availability banner */}
+      {availableMl !== null && (
+        <div
+          className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl border text-sm font-medium ${
+            availableMl > 0
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-amber-50 border-amber-200 text-amber-800'
+          }`}
+        >
+          <CheckCircle className="w-4 h-4 shrink-0" />
+          {availableMl > 0
+            ? <span><strong>{availableMl} mL</strong> of pasteurized milk currently available for dispensing</span>
+            : <span><strong>No milk currently available.</strong> All bottles are dispensed or in processing.</span>
+          }
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden flex flex-col">
         {/* Tabs */}
         <div className="flex px-6 pt-4 border-b border-zinc-100 gap-8">
-          <button 
+          <button
             onClick={() => setActiveTab('active')}
             className={`pb-4 text-sm font-medium transition-colors border-b-2 ${activeTab === 'active' ? 'border-pink-300 text-zinc-900' : 'border-transparent text-zinc-400 hover:text-zinc-600'}`}
           >
             Active Inquiries
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('waiting')}
             className={`pb-4 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'waiting' ? 'border-pink-300 text-zinc-900' : 'border-transparent text-zinc-400 hover:text-zinc-600'}`}
           >
@@ -112,11 +149,15 @@ export function InquiryWaitingListScreen() {
                 <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider">NICU</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider">Type</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider">Date</th>
+                {/* G8: Days Waiting column always visible regardless of tab */}
                 <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider">Days Waiting</th>
                 {activeTab === 'active' && (
                   <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider">Status</th>
                 )}
                 <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider">Notes</th>
+                {activeTab === 'waiting' && (
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider">Action</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 bg-white">
@@ -129,9 +170,11 @@ export function InquiryWaitingListScreen() {
                   </td>
                   <td className="px-6 py-4 text-sm text-zinc-600">{row.inquiry_type === 'walk_in' ? 'Walk-in' : 'Hotline Call'}</td>
                   <td className="px-6 py-4 text-sm text-zinc-600 font-mono">{formatDate(row.requested_at)}</td>
-                  <td className="px-6 py-4 text-sm text-zinc-900 font-medium flex items-center gap-1.5 mt-2.5">
-                    <Clock className="w-4 h-4 text-zinc-400" />
-                    {calculateDaysWaiting(row.requested_at)}
+                  <td className="px-6 py-4 text-sm text-zinc-900 font-medium">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-zinc-400" />
+                      {calculateDaysWaiting(row.requested_at)}
+                    </span>
                   </td>
                   {activeTab === 'active' && (
                     <td className="px-6 py-4">
@@ -141,10 +184,24 @@ export function InquiryWaitingListScreen() {
                   <td className="px-6 py-4 text-sm text-zinc-500 truncate max-w-xs" title={row.notes || ''}>
                     {row.notes || '-'}
                   </td>
+                  {/* G7: Mark as Notified action */}
+                  {activeTab === 'waiting' && (
+                    <td className="px-6 py-4">
+                      <button
+                        onClick={() => markAsNotified(row)}
+                        disabled={notifying === row.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{ background: '#f472b6' }}
+                      >
+                        <Bell className="w-3.5 h-3.5" />
+                        {notifying === row.id ? 'Notifying…' : 'Mark Notified'}
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
               {displayedRows.length === 0 && (
-                <tr><td colSpan={activeTab === 'active' ? 8 : 7} className="px-6 py-8 text-center text-sm text-zinc-400">No records found in this view.</td></tr>
+                <tr><td colSpan={colCount} className="px-6 py-8 text-center text-sm text-zinc-400">No records found in this view.</td></tr>
               )}
             </tbody>
           </table>
@@ -154,9 +211,9 @@ export function InquiryWaitingListScreen() {
       <AnimatePresence>
         {open && (
           <>
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setOpen(false)}
               className="fixed inset-0 z-40 bg-zinc-950/20 backdrop-blur-sm"
@@ -177,7 +234,22 @@ export function InquiryWaitingListScreen() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-8 py-6 hide-scrollbar space-y-6">
-                  
+
+                  {/* G6: Inline inventory availability inside the form */}
+                  {availableMl !== null && (
+                    <div className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-sm ${
+                      availableMl > 0
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                        : 'bg-amber-50 border-amber-200 text-amber-800'
+                    }`}>
+                      <CheckCircle className="w-4 h-4 shrink-0" />
+                      {availableMl > 0
+                        ? <span><strong>{availableMl} mL</strong> available in inventory</span>
+                        : <span>No milk currently available in inventory</span>
+                      }
+                    </div>
+                  )}
+
                   {/* Inquiry Type Radio */}
                   <div className="space-y-3">
                     <label className="text-sm font-medium text-zinc-700">Inquiry Type <span className="text-pink-400">*</span></label>
@@ -216,12 +288,12 @@ export function InquiryWaitingListScreen() {
                       <div className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${nicuConfirmed ? 'bg-zinc-800 border-zinc-800' : 'border border-zinc-300 bg-white group-hover:border-zinc-400'}`}>
                         {nicuConfirmed && <div className="w-2.5 h-2.5 bg-white rounded-sm" />}
                       </div>
-                      <input 
-                        type="checkbox" 
-                        required 
-                        className="hidden" 
-                        checked={nicuConfirmed} 
-                        onChange={(e) => setNicuConfirmed(e.target.checked)} 
+                      <input
+                        type="checkbox"
+                        required
+                        className="hidden"
+                        checked={nicuConfirmed}
+                        onChange={(e) => setNicuConfirmed(e.target.checked)}
                       />
                     </div>
                     <div>
@@ -232,11 +304,11 @@ export function InquiryWaitingListScreen() {
 
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium text-zinc-700">Notes</label>
-                    <textarea 
-                      name="notes" 
+                    <textarea
+                      name="notes"
                       rows={4}
-                      placeholder="Additional notes about the inquiry..." 
-                      className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-3 text-sm outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100 transition-all placeholder:text-zinc-400 resize-none" 
+                      placeholder="Additional notes about the inquiry..."
+                      className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-3 text-sm outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100 transition-all placeholder:text-zinc-400 resize-none"
                     />
                   </div>
 

@@ -67,7 +67,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Operations',
     items: [
       { id: 'dispensing', label: 'Dispensing', icon: <Send className="w-[18px] h-[18px]" /> },
-      { id: 'sms', label: 'SMS Notifications', icon: <MessageSquare className="w-[18px] h-[18px]" /> },
+      { id: 'sms', label: 'Notifications', icon: <MessageSquare className="w-[18px] h-[18px]" /> },
     ],
   },
   {
@@ -90,7 +90,7 @@ const SCREEN_TITLES: Partial<Record<Screen, string>> = {
   recipients: 'Recipient Management',
   inquiry: 'Inquiry & Waiting List',
   dispensing: 'Dispensing',
-  sms: 'SMS Notifications',
+  sms: 'Notifications',
   reports: 'Reports',
   audit: 'Audit Log',
 }

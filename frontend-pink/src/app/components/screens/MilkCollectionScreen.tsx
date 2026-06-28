@@ -7,6 +7,7 @@ import { fromProgramLabel, formatDate, toProgramLabel } from '../../exportUtils'
 import { motion, AnimatePresence } from 'motion/react'
 
 type Donor = { id: string; dtn: string | null; full_name: string; primary_program: string }
+type StaffProfile = { id: string; full_name: string; role: string }
 type Collection = {
   id: string
   ctn: string | null
@@ -27,6 +28,7 @@ function modeToShort(mode: string): string {
 export function MilkCollectionScreen() {
   const [rows, setRows] = useState<Collection[]>([])
   const [donors, setDonors] = useState<Donor[]>([])
+  const [staffList, setStaffList] = useState<StaffProfile[]>([])
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -37,16 +39,22 @@ export function MilkCollectionScreen() {
   const [selectedDonor, setSelectedDonor] = useState<Donor | null>(null)
   const donorRef = useRef<HTMLDivElement>(null)
 
+  // Collection mode (to conditionally show DoPU — G3)
+  const [collectionMode, setCollectionMode] = useState<string>('field_collection')
+
   async function load(): Promise<void> {
-    const [{ data: collections }, { data: donorRows }] = await Promise.all([
+    const [{ data: collections }, { data: donorRows }, { data: profiles }] = await Promise.all([
       supabase
         .from('collections')
         .select('id,ctn,program,volume_ml,collection_mode,collected_at,age_of_baby_days,donors(id,dtn,full_name,primary_program)')
         .order('collected_at', { ascending: false }),
       supabase.from('donors').select('id,dtn,full_name,primary_program').order('full_name'),
+      // D5: fetch active staff profiles for the collected_by dropdown
+      supabase.from('profiles').select('id,full_name,role').eq('is_active', true).order('full_name'),
     ])
     setRows((collections ?? []) as Collection[])
     setDonors((donorRows ?? []) as Donor[])
+    setStaffList((profiles ?? []) as StaffProfile[])
   }
   useEffect(() => { void load() }, [])
 
@@ -81,6 +89,7 @@ export function MilkCollectionScreen() {
   function openDrawer() {
     setSelectedDonor(null)
     setDonorQuery('')
+    setCollectionMode('field_collection')
     setOpen(true)
   }
 
@@ -91,6 +100,7 @@ export function MilkCollectionScreen() {
     const donorId = selectedDonor?.id ?? String(form.get('donor_id') ?? '')
     const program = fromProgramLabel(form.get('program'))
     const volume = Number(form.get('volume_ml') ?? 0)
+    const mode = String(form.get('collection_mode'))
 
     const aobInput = String(form.get('aob') ?? '').trim()
     let ageOfBabyDays: number | null = null
@@ -103,14 +113,21 @@ export function MilkCollectionScreen() {
       }
     }
 
+    // G3: only send pickup_at when mode is pickup
+    const pickupAt = mode === 'pickup' ? (String(form.get('pickup_at') || '') || null) : null
+    // D5: send UUID from profiles dropdown (not free text)
+    const collectedBy = String(form.get('collected_by') || '') || null
+
     const { data: collection } = await supabase.from('collections').insert({
       donor_id: donorId,
       program,
       volume_ml: volume,
-      collection_mode: String(form.get('collection_mode')),
+      collection_mode: mode,
       collected_at: String(form.get('collected_at')) || new Date().toISOString(),
       age_of_baby_days: ageOfBabyDays,
       cold_chain_verified: true,
+      pickup_at: pickupAt,
+      collected_by: collectedBy,
     }).select('id').single()
 
     const { data: batch } = await supabase.from('batches').insert({
@@ -131,6 +148,7 @@ export function MilkCollectionScreen() {
     setOpen(false)
     setSelectedDonor(null)
     setDonorQuery('')
+    setCollectionMode('field_collection')
     await load()
   }
 
@@ -309,12 +327,36 @@ export function MilkCollectionScreen() {
                     </div>
                     <div className="space-y-1.5">
                       <label htmlFor="col-mode" className="text-sm font-medium text-zinc-700">Collection Mode <span className="text-pink-400">*</span></label>
-                      <select id="col-mode" name="collection_mode" required className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all text-zinc-700 appearance-none">
+                      <select
+                        id="col-mode"
+                        name="collection_mode"
+                        required
+                        value={collectionMode}
+                        onChange={(e) => setCollectionMode(e.target.value)}
+                        className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all text-zinc-700 appearance-none"
+                      >
                         <option value="field_collection">FC - Field Collection</option>
                         <option value="pickup">PU - Pickup</option>
                       </select>
                     </div>
                   </div>
+
+                  {/* G3: DoPU field — only shown when mode is pickup */}
+                  {collectionMode === 'pickup' && (
+                    <div className="space-y-1.5">
+                      <label htmlFor="col-dopu" className="text-sm font-medium text-zinc-700">
+                        Date of Pickup (DoPU) <span className="text-pink-400">*</span>
+                        <span className="ml-2 text-xs font-normal text-zinc-400">Required for Mom's Act pickups</span>
+                      </label>
+                      <input
+                        id="col-dopu"
+                        name="pickup_at"
+                        type="datetime-local"
+                        required
+                        className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all text-zinc-500"
+                      />
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-1.5">
@@ -327,9 +369,19 @@ export function MilkCollectionScreen() {
                     </div>
                   </div>
 
+                  {/* D5: Collected By — staff UUID dropdown (fixes FK constraint) */}
                   <div className="space-y-1.5">
                     <label htmlFor="col-by" className="text-sm font-medium text-zinc-700">Collected By</label>
-                    <input id="col-by" name="collected_by" placeholder="e.g., Maria Santos, R.N." className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
+                    <select
+                      id="col-by"
+                      name="collected_by"
+                      className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all text-zinc-700 appearance-none"
+                    >
+                      <option value="">Select staff member…</option>
+                      {staffList.map((s) => (
+                        <option key={s.id} value={s.id}>{s.full_name} ({s.role})</option>
+                      ))}
+                    </select>
                   </div>
 
                 </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Download, Plus, Search, X, Pencil, Trash2, AlertTriangle } from 'lucide-react'
+import { Download, Plus, Search, X, Pencil, Trash2, AlertTriangle, ShieldOff } from 'lucide-react'
 import { PageHeader } from '../shared/PageHeader'
 import { StatusBadge } from '../shared/StatusBadge'
 import { supabase } from '../../../lib/supabase'
@@ -31,8 +31,11 @@ const CHECKLIST_ITEMS = [
   { id: 'organ', label: 'Organ transplant history' },
   { id: 'alcohol', label: 'Alcohol use in past 24 hours' },
   { id: 'smoker', label: 'Active smoker' },
-  { id: 'drugs', label: 'Illegal drug use' }
+  { id: 'drugs', label: 'Illegal drug use' },
 ]
+
+/** D4: Programs where health screening is bypassed (pre-screened externally) */
+const BYPASS_PROGRAMS = ['milky_way', 'moms_act']
 
 export function DonorManagementScreen() {
   const [rows, setRows] = useState<DonorRow[]>([])
@@ -43,6 +46,13 @@ export function DonorManagementScreen() {
   const [editRow, setEditRow] = useState<DonorRow | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DonorRow | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // D4: Track selected program to conditionally suppress screening tab
+  const [selectedProgram, setSelectedProgram] = useState<string>('')
+  // G2: Consent acknowledgment state
+  const [consentAcknowledged, setConsentAcknowledged] = useState(false)
+
+  const screeningBypassed = BYPASS_PROGRAMS.includes(fromProgramLabel(selectedProgram) ?? '')
 
   async function load(): Promise<void> {
     const { data } = await supabase
@@ -65,12 +75,16 @@ export function DonorManagementScreen() {
 
   function openAdd() {
     setEditRow(null)
+    setSelectedProgram('')
+    setConsentAcknowledged(false)
     setActiveTab('personal')
     setOpen(true)
   }
 
   function openEdit(row: DonorRow) {
     setEditRow(row)
+    setSelectedProgram(toProgramLabel(row.primary_program) ?? '')
+    setConsentAcknowledged(false)
     setActiveTab('personal')
     setOpen(true)
   }
@@ -78,6 +92,8 @@ export function DonorManagementScreen() {
   function closeDrawer() {
     setOpen(false)
     setEditRow(null)
+    setSelectedProgram('')
+    setConsentAcknowledged(false)
     setActiveTab('personal')
   }
 
@@ -86,6 +102,7 @@ export function DonorManagementScreen() {
     setSaving(true)
     const form = new FormData(event.currentTarget)
     const program = fromProgramLabel(form.get('program'))
+    const isBypass = BYPASS_PROGRAMS.includes(program ?? '')
 
     const payload = {
       full_name: String(form.get('full_name') ?? ''),
@@ -101,13 +118,16 @@ export function DonorManagementScreen() {
     if (editRow) {
       await supabase.from('donors').update(payload).eq('id', editRow.id)
     } else {
+      // D4: Auto-set screening_status based on program
+      const screeningStatus = isBypass ? 'not_required' : 'pending'
       const { data: newDonor } = await supabase
         .from('donors')
-        .insert({ ...payload, screening_status: 'pending' })
+        .insert({ ...payload, screening_status: screeningStatus })
         .select('id')
         .single()
 
-      if (newDonor) {
+      if (newDonor && !isBypass) {
+        // G1: Include counseling/interview/consent timestamps
         await supabase.from('donor_screenings').insert({
           donor_id: newDonor.id,
           program,
@@ -123,6 +143,9 @@ export function DonorManagementScreen() {
           smoking_history: form.get('smoker') === 'on',
           illegal_drug_use: form.get('drugs') === 'on',
           last_delivery_date: form.get('last_delivery_date') || null,
+          counseling_completed_at: form.get('counseling_completed_at') || null,
+          interview_completed_at: form.get('interview_completed_at') || null,
+          consent_signed_at: form.get('consent_signed_at') || null,
         })
       }
     }
@@ -310,7 +333,8 @@ export function DonorManagementScreen() {
                     >
                       Personal Info
                     </button>
-                    {!editRow && (
+                    {/* D4: Only show screening tab when program is NOT bypassed */}
+                    {!editRow && !screeningBypassed && (
                       <button
                         type="button"
                         onClick={() => setActiveTab('screening')}
@@ -332,7 +356,18 @@ export function DonorManagementScreen() {
                         </div>
                         <div className="space-y-1.5">
                           <label htmlFor="donor-program" className="text-sm font-medium text-zinc-700">Program Type <span className="text-pink-400">*</span></label>
-                          <select id="donor-program" name="program" required defaultValue={editRow ? toProgramLabel(editRow.primary_program) : ''} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all text-zinc-700 appearance-none">
+                          <select
+                            id="donor-program"
+                            name="program"
+                            required
+                            value={selectedProgram}
+                            onChange={(e) => {
+                              setSelectedProgram(e.target.value)
+                              // D4: reset to personal tab if switching to bypass program
+                              setActiveTab('personal')
+                            }}
+                            className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all text-zinc-700 appearance-none"
+                          >
                             <option value="">Select program</option>
                             <option>Supsup Todo</option>
                             <option>Mom's Act</option>
@@ -340,6 +375,17 @@ export function DonorManagementScreen() {
                           </select>
                         </div>
                       </div>
+
+                      {/* D4: Screening bypass notice banner */}
+                      {screeningBypassed && !editRow && (
+                        <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-sky-50 border border-sky-200 text-sky-800">
+                          <ShieldOff className="w-4 h-4 mt-0.5 shrink-0" />
+                          <div className="text-sm">
+                            <p className="font-semibold">Health screening not required</p>
+                            <p className="text-xs mt-0.5 text-sky-700">Donors in this program are pre-screened externally. Screening status will be set to <strong>Not Required</strong> automatically.</p>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="space-y-1.5">
                         <label htmlFor="donor-name" className="text-sm font-medium text-zinc-700">Full Name <span className="text-pink-400">*</span></label>
@@ -412,6 +458,51 @@ export function DonorManagementScreen() {
                             </label>
                           ))}
                         </div>
+                      </div>
+
+                      {/* G1: Completion timestamps section */}
+                      <div className="space-y-4 pt-2 border-t border-zinc-100">
+                        <div className="pt-4">
+                          <p className="text-sm font-semibold text-zinc-700">Completion Timestamps</p>
+                          <p className="text-xs text-zinc-500 mt-0.5">Log when each step was completed with the donor.</p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label htmlFor="ts-counseling" className="text-sm font-medium text-zinc-700">Counseling Completed At</label>
+                          <input id="ts-counseling" type="datetime-local" name="counseling_completed_at" className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all text-zinc-500" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label htmlFor="ts-interview" className="text-sm font-medium text-zinc-700">Interview Completed At</label>
+                          <input id="ts-interview" type="datetime-local" name="interview_completed_at" className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all text-zinc-500" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label htmlFor="ts-consent" className="text-sm font-medium text-zinc-700">Consent Signed At</label>
+                          <input id="ts-consent" type="datetime-local" name="consent_signed_at" className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all text-zinc-500" />
+                        </div>
+                      </div>
+
+                      {/* G2: Maternal consent acknowledgment */}
+                      <div className="space-y-3 pt-2 border-t border-zinc-100">
+                        <div className="pt-2 p-4 rounded-xl bg-zinc-50 border border-zinc-200 text-sm text-zinc-700 leading-relaxed">
+                          <p className="font-semibold text-zinc-900 mb-2">Maternal Authorization Statement</p>
+                          <p>I, the undersigned, hereby voluntarily consent to donate my breast milk to the Makati Human Milk Bank. I understand that my donated milk will be used to feed sick and premature babies in the NICU. I attest that I am currently in good health and that all information I have provided is true and accurate to the best of my knowledge. I give permission for the milk bank to screen, pasteurize, and distribute my donated milk as they see fit for the benefit of recipient infants.</p>
+                        </div>
+                        <label className="flex items-start gap-3 p-4 rounded-xl border border-zinc-200 bg-white cursor-pointer group hover:border-zinc-300 transition-colors">
+                          <div className="shrink-0 mt-0.5">
+                            <div className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${consentAcknowledged ? 'bg-zinc-800 border-zinc-800' : 'border border-zinc-300 bg-white group-hover:border-zinc-400'}`}>
+                              {consentAcknowledged && <div className="w-2.5 h-2.5 bg-white rounded-sm" />}
+                            </div>
+                            <input
+                              type="checkbox"
+                              required
+                              className="hidden"
+                              checked={consentAcknowledged}
+                              onChange={(e) => setConsentAcknowledged(e.target.checked)}
+                            />
+                          </div>
+                          <p className="text-sm text-zinc-700 font-medium leading-snug">
+                            I have read this consent statement to the donor and they have agreed and signed.
+                          </p>
+                        </label>
                       </div>
                     </div>
                   )}

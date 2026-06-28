@@ -7,31 +7,27 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, 
 import { motion } from 'motion/react'
 
 type Batch = { id: string; status: string; program: string; total_volume_ml: number }
-type Inquiry = { id: string; status: string; beneficiaries?: { guardian_name: string; baby_name: string } | null }
 type ReportBase = { report_month: string; program: string; raw_collected_ml: number }
 type Waitlist = { inquiry_id: string; guardian_name: string; baby_name: string; requested_at: string }
 
 export function DashboardScreen({ onNavigate }: { onNavigate: (screen: string) => void }) {
   const [batches, setBatches] = useState<Batch[]>([])
   const [donorCount, setDonorCount] = useState(0)
-  const [inquiries, setInquiries] = useState<Inquiry[]>([])
   const [reports, setReports] = useState<ReportBase[]>([])
   const [waitlist, setWaitlist] = useState<Waitlist[]>([])
 
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
-        const [b, d, i, r, w] = await Promise.all([
+        const [b, d, r, w] = await Promise.all([
           supabase.from('batches').select('id,status,program,total_volume_ml'),
           supabase.from('donors').select('id', { count: 'exact', head: true }),
-          supabase.from('inquiries').select('id,status,beneficiaries(guardian_name,baby_name)').neq('status','cancelled'),
           supabase.from('collection_unit_report_base').select('*'),
           supabase.from('waitlist_fifo').select('*')
         ])
         
         setBatches((b.data ?? []) as Batch[])
         setDonorCount(d.count ?? 0)
-        setInquiries((i.data ?? []) as Inquiry[])
         setReports((r.data ?? []) as ReportBase[])
         setWaitlist((w.data ?? []) as Waitlist[])
       } catch (err) {
@@ -237,21 +233,19 @@ export function DashboardScreen({ onNavigate }: { onNavigate: (screen: string) =
           </div>
         </div>
 
-        {/* Keeping original active inquiries as fallback if they want it */}
+        {/* Ready to Dispense — replaces vestigial Active Inquiries card */}
         <div className="bg-white rounded-[32px] p-8 border border-zinc-100 shadow-sm">
-           <h3 className="text-zinc-950 font-semibold text-xl tracking-tight mb-6">Active Inquiries</h3>
-           <div className="space-y-2">
-            {inquiries.length === 0 ? (
-              <div className="text-zinc-400 text-sm py-4">No active inquiries.</div>
-            ) : (
-              inquiries.slice(0, 5).map(row => (
-                <div key={row.id} className="flex justify-between items-center py-3 border-b border-zinc-100 last:border-0 text-sm">
-                  <span className="font-medium text-zinc-700">{row.beneficiaries?.guardian_name} / {row.beneficiaries?.baby_name}</span>
-                  <span className="text-zinc-400 bg-zinc-50 px-2 py-1 rounded-md text-xs">{toTitle(row.status)}</span>
-                </div>
-              ))
-            )}
-           </div>
+          <h3 className="text-zinc-950 font-semibold text-xl tracking-tight mb-2">Ready to Dispense</h3>
+          <p className="text-zinc-400 text-sm mb-6">Pasteurized bottles available in inventory</p>
+          <div className="flex flex-col items-center justify-center h-40 gap-2">
+            <div className="text-5xl font-black font-mono" style={{ color: '#FF5D8F' }}>
+              {batches.filter(b => b.status === 'ready').reduce((s, b) => s + Number(b.total_volume_ml), 0)}
+            </div>
+            <div className="text-zinc-400 text-sm font-mono uppercase tracking-wider">mL available</div>
+            <div className="text-zinc-400 text-xs mt-1">
+              {batches.filter(b => b.status === 'ready').length} batch{batches.filter(b => b.status === 'ready').length !== 1 ? 'es' : ''} ready
+            </div>
+          </div>
         </div>
       </div>
     </div>
