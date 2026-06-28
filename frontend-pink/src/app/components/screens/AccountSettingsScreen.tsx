@@ -83,7 +83,7 @@ export function AccountSettingsScreen({ user }: { user: AppUser }) {
         subtitle="View your profile and manage your password."
       />
 
-      <div className="max-w-lg space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl items-start">
 
         {/* Profile card */}
         <section

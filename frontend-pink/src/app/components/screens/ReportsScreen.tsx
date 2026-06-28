@@ -151,9 +151,10 @@ export function ReportsScreen() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map((s, i) => (
-          <div key={i} className="bg-white rounded-3xl border border-zinc-100 p-6 shadow-sm flex flex-col">
-            <div className="text-3xl font-bold font-mono tracking-tight" style={{ color: STATS_PALETTE[i % STATS_PALETTE.length] }}>
-              {s.value}
+          <div key={i} className="bg-white rounded-3xl border border-zinc-100 p-6 shadow-sm flex flex-col overflow-hidden relative">
+            <div className="absolute inset-x-0 top-0 h-0.5 rounded-t-3xl" style={{ backgroundColor: STATS_PALETTE[i % STATS_PALETTE.length] }} />
+            <div className="text-3xl font-bold font-mono tracking-tight tabular-nums" style={{ color: STATS_PALETTE[i % STATS_PALETTE.length] }}>
+              {typeof s.value === 'number' ? new Intl.NumberFormat('en-PH').format(s.value) : s.value}
             </div>
             <div className="text-sm font-semibold text-zinc-800 mt-2">{s.label}</div>
             <div className="text-xs font-mono text-zinc-400 uppercase mt-1">{s.sub}</div>
@@ -170,15 +171,15 @@ export function ReportsScreen() {
           
           {pieData.length > 0 ? (
             <div className="flex flex-col items-center">
-              <div className="h-48 w-full mb-6">
+              <div className="relative h-52 w-full mb-6">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={pieData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={50}
-                      outerRadius={80}
+                      innerRadius={54}
+                      outerRadius={84}
                       paddingAngle={3}
                       dataKey="value"
                       stroke="none"
@@ -187,12 +188,22 @@ export function ReportsScreen() {
                         <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.name as keyof typeof STATUS_COLORS]} />
                       ))}
                     </Pie>
-                    <Tooltip 
-                      formatter={(value: number) => [`${value} mL`, 'Volume']}
+                    <Tooltip
+                      formatter={(value: number, name: string) => [
+                        new Intl.NumberFormat('en-PH').format(value) + ' mL', name
+                      ]}
                       contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold font-mono tabular-nums" style={{ color: '#322e2d' }}>
+                      {new Intl.NumberFormat('en-PH').format(pieData.reduce((s, d) => s + d.value, 0))}
+                    </div>
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-400 mt-0.5">mL total</div>
+                  </div>
+                </div>
               </div>
               <div className="w-full space-y-2">
                 {Object.keys(STATUS_COLORS).map(status => {

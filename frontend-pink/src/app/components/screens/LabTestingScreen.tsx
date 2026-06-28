@@ -55,7 +55,7 @@ export function LabTestingScreen() {
 
     let labsQuery = supabase
       .from('lab_results')
-      .select('id,stage,result,sample_volume_ml,sent_to_lab_at,expected_result_at,result_received_at,recorded_by_name,batches(id,batch_number,status,program,batch_collections(collections(ctn,donors(dtn))))', { count: 'exact' })
+      .select('id,stage,result,sample_volume_ml,sent_to_lab_at,expected_result_at,result_received_at,recorded_by_name,batches!inner(id,batch_number,status,program,batch_collections(collections(ctn,donors(dtn))))', { count: 'exact' })
       .eq('stage', activeTab)
       .order('sent_to_lab_at', { ascending: false })
       .range(from, to)

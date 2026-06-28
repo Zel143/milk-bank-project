@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Archive, ClipboardList, Droplets, Send, Users, ArrowRight } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { PageHeader } from '../shared/PageHeader'
+import { StatusBadge } from '../shared/StatusBadge'
 import { supabase } from '../../../lib/supabase'
 import { toProgramLabel, toTitle } from '../../exportUtils'
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, Legend } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { motion } from 'motion/react'
 
 type Batch = { id: string; status: string; program: string; total_volume_ml: number }
@@ -69,14 +70,23 @@ export function DashboardScreen({ onNavigate }: { onNavigate: (screen: string) =
     moms_act:    "Mom's Act",
   }
 
-  const monthlyDataMap = new Map<string, Record<string, number>>()
+  type MonthEntry = Record<string, string | number>
+  const monthlyRaw = new Map<string, { entry: MonthEntry; sortVal: number }>()
   reports.forEach(r => {
-    const m = r.report_month ? new Date(r.report_month).toLocaleString('default', { month: 'short' }) : 'Unknown'
-    if (!monthlyDataMap.has(m)) monthlyDataMap.set(m, { name: m as unknown as number })
-    const entry = monthlyDataMap.get(m)!
-    entry[r.program] = (entry[r.program] || 0) + Number(r.raw_collected_ml || 0)
+    const key = r.report_month?.slice(0, 7) ?? 'unknown'
+    if (!monthlyRaw.has(key)) {
+      const d = r.report_month ? new Date(r.report_month + 'T00:00:00') : new Date(0)
+      monthlyRaw.set(key, {
+        entry: { name: new Intl.DateTimeFormat('en-PH', { month: 'short' }).format(d) },
+        sortVal: d.getTime(),
+      })
+    }
+    const item = monthlyRaw.get(key)!
+    item.entry[r.program] = (Number(item.entry[r.program] ?? 0)) + Number(r.raw_collected_ml ?? 0)
   })
-  const monthlyChartData = Array.from(monthlyDataMap.values())
+  const monthlyChartData = Array.from(monthlyRaw.values())
+    .sort((a, b) => a.sortVal - b.sortVal)
+    .map(item => item.entry)
   const activePrograms = Array.from(new Set(reports.map(r => r.program)))
 
   const programDataMap = new Map<string, number>()
@@ -141,6 +151,10 @@ export function DashboardScreen({ onNavigate }: { onNavigate: (screen: string) =
                 <Tooltip
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}
                   cursor={{ stroke: '#fce7f3', strokeWidth: 2 }}
+                  formatter={(value: number, name: string) => [
+                    new Intl.NumberFormat('en-PH').format(value) + ' mL',
+                    PROGRAM_LABELS[name] ?? name,
+                  ]}
                 />
                 <Legend
                   iconType="circle"
@@ -165,39 +179,46 @@ export function DashboardScreen({ onNavigate }: { onNavigate: (screen: string) =
             <p className="text-zinc-400 text-sm mt-1">Volume by collection program</p>
           </div>
           
-          <div className="space-y-5 mb-8 flex-grow">
-            {programChartData.map((item, index) => (
-              <div key={item.name}>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="font-medium text-zinc-700">{item.name}</span>
-                  <span className="text-zinc-400 font-mono text-xs">{item.value} mL</span>
+          <div className="space-y-6 flex-grow">
+            {programChartData.length === 0 ? (
+              <div className="flex items-center justify-center h-24 text-zinc-400 text-sm">No data available</div>
+            ) : programChartData.map((item, index) => {
+              const maxVal = Math.max(...programChartData.map(d => d.value)) || 1
+              const total = programChartData.reduce((s, d) => s + d.value, 0) || 1
+              const pct = Math.round((item.value / total) * 100)
+              return (
+                <div key={item.name}>
+                  <div className="flex justify-between text-sm mb-2.5 items-baseline">
+                    <span className="font-medium text-zinc-700">{item.name}</span>
+                    <span className="text-zinc-400 font-mono text-xs">
+                      {new Intl.NumberFormat('en-PH').format(item.value)}&nbsp;mL
+                      <span className="text-zinc-300 ml-1.5">&middot; {pct}%</span>
+                    </span>
+                  </div>
+                  <div className="h-3 w-full bg-zinc-100 rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(item.value / maxVal) * 100}%` }}
+                      transition={{ duration: 1, ease: 'easeOut', delay: index * 0.1 }}
+                      className="h-full rounded-full"
+                      style={{ backgroundColor: programColors[index % programColors.length] }}
+                    />
+                  </div>
                 </div>
-                <div className="h-2 w-full bg-zinc-100 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(item.value / (Math.max(...programChartData.map(d => d.value)) || 1)) * 100}%` }}
-                    transition={{ duration: 1, ease: 'easeOut' }}
-                    className="h-full rounded-full" 
-                    style={{ backgroundColor: programColors[index % programColors.length] }} 
-                  />
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
-          <div className="h-32 w-full mt-auto">
-             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={programChartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                <Tooltip cursor={{ fill: '#f4f4f5' }} contentStyle={{ borderRadius: '12px', border: 'none' }} />
-                <Bar dataKey="value" radius={[6, 6, 6, 6]} barSize={24}>
-                  {programChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={programColors[index % programColors.length]} />
-                  ))}
-                </Bar>
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 10 }} dy={10} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {programChartData.length > 0 && (
+            <div className="mt-8 pt-6 border-t border-zinc-100">
+              <div className="flex justify-between items-baseline text-sm">
+                <span className="text-zinc-500 font-medium">Total</span>
+                <span className="font-mono font-bold text-zinc-900">
+                  {new Intl.NumberFormat('en-PH').format(programChartData.reduce((s, d) => s + d.value, 0))}&nbsp;mL
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -245,9 +266,12 @@ export function DashboardScreen({ onNavigate }: { onNavigate: (screen: string) =
               <div className="text-zinc-400 text-sm py-4">No active inquiries.</div>
             ) : (
               inquiries.slice(0, 5).map(row => (
-                <div key={row.id} className="flex justify-between items-center py-3 border-b border-zinc-100 last:border-0 text-sm">
-                  <span className="font-medium text-zinc-700">{row.beneficiaries?.guardian_name} / {row.beneficiaries?.baby_name}</span>
-                  <span className="text-zinc-400 bg-zinc-50 px-2 py-1 rounded-md text-xs">{toTitle(row.status)}</span>
+                <div key={row.id} className="flex justify-between items-center py-3 border-b border-zinc-100 last:border-0">
+                  <div>
+                    <div className="text-sm font-medium text-zinc-800">{row.beneficiaries?.guardian_name ?? 'Unknown'}</div>
+                    <div className="text-xs text-zinc-400 mt-0.5">{row.beneficiaries?.baby_name ?? '—'}</div>
+                  </div>
+                  <StatusBadge value={row.status.toUpperCase()} />
                 </div>
               ))
             )}

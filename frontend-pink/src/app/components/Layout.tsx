@@ -315,12 +315,6 @@ export function Layout({ user, currentScreen, activeProgram, onNavigate, onProgr
                       `}
                       style={isActive ? { background: '#eea4bb' } : {}}
                     >
-                      {isActive && (
-                        <span
-                          className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
-                          style={{ background: '#d98daa' }}
-                        />
-                      )}
                       <span className={isActive ? 'text-[#322e2d]' : ''}>{item.icon}</span>
                       {!collapsed && (
                         <span className="text-sm leading-none tracking-[-0.01em]">{item.label}</span>

@@ -3,7 +3,7 @@ import { Plus, X, Info } from 'lucide-react'
 import { PageHeader } from '../shared/PageHeader'
 import { StatusBadge } from '../shared/StatusBadge'
 import { supabase } from '../../../lib/supabase'
-import { formatDate, activeProgramToDb } from '../../exportUtils'
+import { formatDate, activeProgramToDb, toTitle } from '../../exportUtils'
 import { useProgramFilter } from '../../../lib/programContext'
 import { usePagination } from '../../hooks/usePagination'
 import { Pagination } from '../shared/Pagination'
@@ -43,7 +43,7 @@ export function PasteurizationScreen() {
 
     let recsQuery = supabase
       .from('pasteurization_records')
-      .select('id,pasteurized_at,temperature_c,duration_minutes,batches(id,batch_number,total_volume_ml,program,lab_results(stage,result)),profiles(full_name)', { count: 'exact' })
+      .select('id,pasteurized_at,temperature_c,duration_minutes,batches!inner(id,batch_number,total_volume_ml,program,lab_results(stage,result)),profiles(full_name)', { count: 'exact' })
       .order('pasteurized_at', { ascending: false })
       .range(from, to)
     if (dbProgram) recsQuery = recsQuery.eq('batches.program', dbProgram)
@@ -137,7 +137,7 @@ export function PasteurizationScreen() {
                 <td className="px-6 py-4 text-sm text-zinc-900 font-medium">{row.duration_minutes} min</td>
                 <td className="px-6 py-4 text-sm text-zinc-600 font-mono">{formatDate(row.pasteurized_at)}</td>
                 <td className="px-6 py-4">
-                  <StatusBadge value={getPostTestStatus(row.batches)} />
+                  <StatusBadge value={toTitle(getPostTestStatus(row.batches))} />
                 </td>
               </tr>
             ))}
