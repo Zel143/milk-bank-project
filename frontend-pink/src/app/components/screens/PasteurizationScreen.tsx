@@ -1,15 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, X, Info } from 'lucide-react'
 import { PageHeader } from '../shared/PageHeader'
 import { StatusBadge } from '../shared/StatusBadge'
 import { supabase } from '../../../lib/supabase'
-import { formatDate } from '../../exportUtils'
+import { formatDate, activeProgramToDb } from '../../exportUtils'
+import { useProgramFilter } from '../../../lib/programContext'
+import { usePagination } from '../../hooks/usePagination'
+import { Pagination } from '../shared/Pagination'
 import { motion, AnimatePresence } from 'motion/react'
 
 type Profile = { id: string; full_name: string; role: string }
 type LabResult = { stage: string; result: string }
 type BatchCollection = { collections: { donors: { dtn: string } | null } }
-type Batch = { id: string; batch_number: string | null; total_volume_ml: number; batch_collections?: BatchCollection[] }
+type Batch = { id: string; batch_number: string | null; total_volume_ml: number; program?: string; batch_collections?: BatchCollection[] }
 type Row = { id: string; pasteurized_at: string; temperature_c: number; duration_minutes: number; batches?: (Batch & { lab_results?: LabResult[] }) | null; profiles?: { full_name: string } | null }
 
 export function PasteurizationScreen() {
@@ -19,19 +22,44 @@ export function PasteurizationScreen() {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  async function load(): Promise<void> { 
-    const [{ data: recs }, { data: eligible }, { data: staff }] = await Promise.all([
-      supabase.from('pasteurization_records').select('id,pasteurized_at,temperature_c,duration_minutes,batches(id,batch_number,total_volume_ml,lab_results(stage,result)),profiles(full_name)').order('pasteurized_at', { ascending: false }), 
-      supabase.from('batches').select('id,batch_number,total_volume_ml,batch_collections(collections(donors(dtn)))').eq('status', 'pre_test_passed'),
+  const activeProgram = useProgramFilter()
+  const { page, pageSize, total, totalPages, from, to, setPage, setTotal, resetPage, handlePageSizeChange } = usePagination()
+  const isFirstRender = useRef(true)
+
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return }
+    resetPage()
+  }, [activeProgram])
+
+  useEffect(() => { void load() }, [page, pageSize, activeProgram])
+
+  async function load(): Promise<void> {
+    const dbProgram = activeProgramToDb(activeProgram)
+    let eligibleQuery = supabase
+      .from('batches')
+      .select('id,batch_number,total_volume_ml,program,batch_collections(collections(donors(dtn)))')
+      .eq('status', 'pre_test_passed')
+    if (dbProgram) eligibleQuery = eligibleQuery.eq('program', dbProgram)
+
+    let recsQuery = supabase
+      .from('pasteurization_records')
+      .select('id,pasteurized_at,temperature_c,duration_minutes,batches(id,batch_number,total_volume_ml,program,lab_results(stage,result)),profiles(full_name)', { count: 'exact' })
+      .order('pasteurized_at', { ascending: false })
+      .range(from, to)
+    if (dbProgram) recsQuery = recsQuery.eq('batches.program', dbProgram)
+
+    const [{ data: recs, count }, { data: eligible }, { data: staff }] = await Promise.all([
+      recsQuery,
+      eligibleQuery,
       supabase.from('profiles').select('id,full_name,role').in('role', ['admin', 'staff']).order('full_name')
     ])
+
     setRows((recs ?? []) as Row[])
+    setTotal(count ?? 0)
     setBatches((eligible ?? []) as Batch[])
     setProfiles((staff ?? []) as Profile[])
   }
-  
-  useEffect(() => { void load() }, [])
-  
+
   async function save(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     setSaving(true)
@@ -118,6 +146,7 @@ export function PasteurizationScreen() {
             )}
           </tbody>
         </table>
+        <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={handlePageSizeChange} />
       </div>
 
       <AnimatePresence>

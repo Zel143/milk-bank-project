@@ -53,3 +53,11 @@ export function fromProgramLabel(value: FormDataEntryValue | null): string {
 export function toTitle(value: string | null | undefined): string {
   return String(value ?? '').split('_').filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(' ')
 }
+
+export function activeProgramToDb(program: string): string | null {
+  if (program === 'All') return null
+  if (program === 'Supsup Todo') return 'supsup_todo'
+  if (program === 'Milky Way') return 'milky_way'
+  if (program === "Mom's Act") return 'moms_act'
+  return null
+}

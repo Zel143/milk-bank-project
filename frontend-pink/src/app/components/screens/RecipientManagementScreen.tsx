@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, Search, X, Pencil, Trash2, AlertTriangle } from 'lucide-react'
 import { PageHeader } from '../shared/PageHeader'
 import { StatusBadge } from '../shared/StatusBadge'
 import { supabase } from '../../../lib/supabase'
 import { motion, AnimatePresence } from 'motion/react'
+import { usePagination } from '../../hooks/usePagination'
+import { Pagination } from '../shared/Pagination'
 
 type Recipient = {
   id: string
@@ -19,6 +21,7 @@ type Recipient = {
 export function RecipientManagementScreen() {
   const [rows, setRows] = useState<Recipient[]>([])
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'nicu' | 'non-nicu'>('all')
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -26,22 +29,34 @@ export function RecipientManagementScreen() {
   const [editRow, setEditRow] = useState<Recipient | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Recipient | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const { page, pageSize, total, totalPages, from, to, setPage, setTotal, resetPage, handlePageSizeChange } = usePagination()
+  const isFirstRender = useRef(true)
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return }
+    resetPage()
+  }, [debouncedSearch, filter])
+
+  useEffect(() => { void load() }, [page, pageSize, debouncedSearch, filter])
 
   async function load(): Promise<void> {
-    const { data } = await supabase
+    let q = supabase
       .from('beneficiaries')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
+      .range(from, to)
+    if (debouncedSearch) q = q.or(`guardian_name.ilike.%${debouncedSearch}%,baby_name.ilike.%${debouncedSearch}%,hospital.ilike.%${debouncedSearch}%`)
+    if (filter === 'nicu') q = q.eq('nicu_eligible', true)
+    if (filter === 'non-nicu') q = q.eq('nicu_eligible', false)
+    const { data, count } = await q
     setRows((data ?? []) as Recipient[])
+    setTotal(count ?? 0)
   }
-
-  useEffect(() => { void load() }, [])
-
-  const filtered = useMemo(() => rows.filter((r) => {
-    const matchesSearch = [r.guardian_name, r.baby_name, r.hospital].join(' ').toLowerCase().includes(search.toLowerCase())
-    const matchesFilter = filter === 'all' ? true : filter === 'nicu' ? r.nicu_eligible : !r.nicu_eligible
-    return matchesSearch && matchesFilter
-  }), [rows, search, filter])
 
   function openAdd() {
     setEditRow(null)
@@ -131,6 +146,7 @@ export function RecipientManagementScreen() {
               placeholder="Search guardian, baby, hospital…"
               aria-label="Search recipients"
               autoComplete="off"
+              maxLength={100}
             />
           </div>
 
@@ -146,7 +162,7 @@ export function RecipientManagementScreen() {
           </select>
 
           <div className="text-sm text-zinc-500 font-medium ml-2 shrink-0 tabular-nums">
-            {filtered.length} {filtered.length === 1 ? 'record' : 'records'}
+            {total} {total === 1 ? 'record' : 'records'}
           </div>
         </div>
 
@@ -160,7 +176,7 @@ export function RecipientManagementScreen() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 bg-white">
-              {filtered.map((r) => (
+              {rows.map((r) => (
                 <tr key={r.id} className="hover:bg-zinc-50/50 transition-colors">
                   <td className="px-6 py-4 text-sm text-zinc-900 font-medium">{r.guardian_name}</td>
                   <td className="px-6 py-4 text-sm text-zinc-900">{r.baby_name}</td>
@@ -190,11 +206,12 @@ export function RecipientManagementScreen() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {rows.length === 0 && (
                 <tr><td colSpan={7} className="px-6 py-8 text-center text-sm text-zinc-400">No recipients found</td></tr>
               )}
             </tbody>
           </table>
+          <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={handlePageSizeChange} />
         </div>
       </div>
 
@@ -304,23 +321,23 @@ export function RecipientManagementScreen() {
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-1.5">
                       <label htmlFor="rcp-guardian" className="text-sm font-medium text-zinc-700">Guardian Name <span className="text-pink-400">*</span></label>
-                      <input id="rcp-guardian" name="guardian_name" required defaultValue={editRow?.guardian_name ?? ''} placeholder="Full name…" autoComplete="name" className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
+                      <input id="rcp-guardian" name="guardian_name" required defaultValue={editRow?.guardian_name ?? ''} placeholder="Full name…" autoComplete="name" maxLength={100} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
                     </div>
                     <div className="space-y-1.5">
                       <label htmlFor="rcp-baby" className="text-sm font-medium text-zinc-700">Baby Name <span className="text-pink-400">*</span></label>
-                      <input id="rcp-baby" name="baby_name" required defaultValue={editRow?.baby_name ?? ''} placeholder="Baby's name…" className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
+                      <input id="rcp-baby" name="baby_name" required defaultValue={editRow?.baby_name ?? ''} placeholder="Baby's name…" maxLength={100} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
                     <label htmlFor="rcp-hospital" className="text-sm font-medium text-zinc-700">Hospital <span className="text-pink-400">*</span></label>
-                    <input id="rcp-hospital" name="hospital" required defaultValue={editRow?.hospital ?? ''} placeholder="Hospital name…" className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
+                    <input id="rcp-hospital" name="hospital" required defaultValue={editRow?.hospital ?? ''} placeholder="Hospital name…" maxLength={100} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
                   </div>
 
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-1.5">
                       <label htmlFor="rcp-contact" className="text-sm font-medium text-zinc-700">Contact Number <span className="text-pink-400">*</span></label>
-                      <input id="rcp-contact" name="contact_number" required type="tel" defaultValue={editRow?.contact_number ?? ''} placeholder="09XXXXXXXXX" autoComplete="tel" spellCheck={false} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm font-mono outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
+                      <input id="rcp-contact" name="contact_number" required type="tel" defaultValue={editRow?.contact_number ?? ''} placeholder="09XXXXXXXXX" autoComplete="tel" spellCheck={false} maxLength={11} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm font-mono outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
                     </div>
                     <div className="space-y-1.5">
                       <label htmlFor="rcp-aob" className="text-sm font-medium text-zinc-700">Age of Baby (AOB)</label>
@@ -329,6 +346,7 @@ export function RecipientManagementScreen() {
                         name="aob_text"
                         placeholder="e.g., 28 weeks…"
                         defaultValue={editRow?.age_of_baby_days ? `${Math.floor(editRow.age_of_baby_days / 7)} weeks` : ''}
+                        maxLength={20}
                         className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400"
                       />
                     </div>

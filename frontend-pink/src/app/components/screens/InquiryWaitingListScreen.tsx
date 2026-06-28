@@ -1,10 +1,12 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, X, Clock } from 'lucide-react'
 import { PageHeader } from '../shared/PageHeader'
 import { StatusBadge } from '../shared/StatusBadge'
 import { supabase } from '../../../lib/supabase'
 import { formatDate, toTitle } from '../../exportUtils'
 import { motion, AnimatePresence } from 'motion/react'
+import { usePagination } from '../../hooks/usePagination'
+import { Pagination } from '../shared/Pagination'
 
 type Beneficiary = { id: string; guardian_name: string; baby_name: string; nicu_eligible: boolean }
 type Inquiry = { id: string; inquiry_type: string; status: string; requested_at: string; nicu_confirmed: boolean; notes: string | null; beneficiaries?: Beneficiary | null }
@@ -12,30 +14,51 @@ type Inquiry = { id: string; inquiry_type: string; status: string; requested_at:
 export function InquiryWaitingListScreen() {
   const [rows, setRows] = useState<Inquiry[]>([])
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([])
+  const [waitingCount, setWaitingCount] = useState(0)
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-  
+
   const [activeTab, setActiveTab] = useState<'active' | 'waiting'>('active')
+  const { page, pageSize, total, totalPages, from, to, setPage, setTotal, resetPage, handlePageSizeChange } = usePagination()
+  const isFirstRender = useRef(true)
 
   // Form state
   const [inquiryType, setInquiryType] = useState<'walk_in' | 'hotline_call'>('walk_in')
   const [nicuConfirmed, setNicuConfirmed] = useState(false)
 
-  async function load(): Promise<void> { 
-    const [{ data: inq }, { data: bens }] = await Promise.all([
-      supabase.from('inquiries').select('id,inquiry_type,status,requested_at,nicu_confirmed,notes,beneficiaries(id,guardian_name,baby_name,nicu_eligible)').order('requested_at', { ascending: false }), 
-      supabase.from('beneficiaries').select('id,guardian_name,baby_name,nicu_eligible').order('guardian_name')
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return }
+    resetPage()
+  }, [activeTab])
+
+  useEffect(() => { void load() }, [page, pageSize, activeTab])
+
+  async function load(): Promise<void> {
+    let inqQuery = supabase
+      .from('inquiries')
+      .select('id,inquiry_type,status,requested_at,nicu_confirmed,notes,beneficiaries(id,guardian_name,baby_name,nicu_eligible)', { count: 'exact' })
+      .order('requested_at', { ascending: false })
+      .range(from, to)
+
+    if (activeTab === 'active') {
+      inqQuery = inqQuery.neq('status', 'waiting')
+    } else {
+      inqQuery = inqQuery.eq('status', 'waiting')
+    }
+
+    const [{ data: inq, count }, { data: bens }, { count: wCount }] = await Promise.all([
+      inqQuery,
+      supabase.from('beneficiaries').select('id,guardian_name,baby_name,nicu_eligible').order('guardian_name'),
+      supabase.from('inquiries').select('id', { count: 'exact', head: true }).eq('status', 'waiting'),
     ])
+
     setRows((inq ?? []) as Inquiry[])
-    setBeneficiaries((bens ?? []) as Beneficiary[]) 
+    setTotal(count ?? 0)
+    setBeneficiaries((bens ?? []) as Beneficiary[])
+    setWaitingCount(wCount ?? 0)
   }
-  
-  useEffect(() => { void load() }, [])
 
-  const activeInquiries = useMemo(() => rows.filter(r => r.status !== 'waiting'), [rows])
-  const waitingList = useMemo(() => rows.filter(r => r.status === 'waiting'), [rows])
-
-  const displayedRows = activeTab === 'active' ? activeInquiries : waitingList
+  const displayedRows = rows
 
   async function save(event: React.FormEvent<HTMLFormElement>): Promise<void> { 
     event.preventDefault()
@@ -98,7 +121,7 @@ export function InquiryWaitingListScreen() {
           >
             Waiting List
             <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${activeTab === 'waiting' ? 'bg-pink-100 text-pink-600' : 'bg-zinc-100 text-zinc-500'}`}>
-              {waitingList.length}
+              {waitingCount}
             </span>
           </button>
         </div>
@@ -148,6 +171,7 @@ export function InquiryWaitingListScreen() {
               )}
             </tbody>
           </table>
+          <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={handlePageSizeChange} />
         </div>
       </div>
 
@@ -232,11 +256,12 @@ export function InquiryWaitingListScreen() {
 
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium text-zinc-700">Notes</label>
-                    <textarea 
-                      name="notes" 
+                    <textarea
+                      name="notes"
                       rows={4}
-                      placeholder="Additional notes about the inquiry..." 
-                      className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-3 text-sm outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100 transition-all placeholder:text-zinc-400 resize-none" 
+                      placeholder="Additional notes about the inquiry..."
+                      maxLength={500}
+                      className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-3 text-sm outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100 transition-all placeholder:text-zinc-400 resize-none"
                     />
                   </div>
 

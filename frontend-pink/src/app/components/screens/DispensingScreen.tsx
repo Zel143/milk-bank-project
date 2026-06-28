@@ -5,6 +5,8 @@ import { supabase } from '../../../lib/supabase'
 import { formatDate } from '../../exportUtils'
 import type { AppUser } from '../../types'
 import { motion, AnimatePresence } from 'motion/react'
+import { usePagination } from '../../hooks/usePagination'
+import { Pagination } from '../shared/Pagination'
 
 type Beneficiary = { id: string; guardian_name: string; baby_name: string; hospital: string | null; nicu_eligible: boolean; age_of_baby_days: number | null; contact_number: string | null }
 type Bottle = { id: string; bottle_number: string | null; remaining_volume_ml: number; batches?: { batch_number: string | null } | null }
@@ -18,6 +20,7 @@ export function DispensingScreen({ user }: { user: AppUser }) {
   const [bottles, setBottles] = useState<Bottle[]>([])
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const { page, pageSize, total, totalPages, from, to, setPage, setTotal, handlePageSizeChange } = usePagination()
   
   // Wizard State
   const [step, setStep] = useState(1)
@@ -46,18 +49,19 @@ export function DispensingScreen({ user }: { user: AppUser }) {
     [r.guardian_name, r.baby_name].join(' ').toLowerCase().includes(searchRec.toLowerCase())
   ), [beneficiaries, searchRec])
 
-  async function load(): Promise<void> { 
-    const [{ data: disp }, { data: bens }, { data: bots }] = await Promise.all([
-      supabase.from('dispensing_records').select('id,volume_ml,total_fee,dispensed_at,beneficiaries(id,guardian_name,baby_name,nicu_eligible)').order('dispensed_at', { ascending: false }), 
-      supabase.from('beneficiaries').select('id,guardian_name,baby_name,hospital,nicu_eligible,age_of_baby_days,contact_number').eq('nicu_eligible', true).order('guardian_name'), 
+  async function load(): Promise<void> {
+    const [{ data: disp, count }, { data: bens }, { data: bots }] = await Promise.all([
+      supabase.from('dispensing_records').select('id,volume_ml,total_fee,dispensed_at,beneficiaries(id,guardian_name,baby_name,nicu_eligible)', { count: 'exact' }).order('dispensed_at', { ascending: false }).range(from, to),
+      supabase.from('beneficiaries').select('id,guardian_name,baby_name,hospital,nicu_eligible,age_of_baby_days,contact_number').eq('nicu_eligible', true).order('guardian_name'),
       supabase.from('bottles').select('id,bottle_number,remaining_volume_ml,batches(batch_number)').eq('status', 'available').gt('remaining_volume_ml', 0).order('bottle_number')
     ])
     setRows((disp ?? []) as Dispense[])
+    setTotal(count ?? 0)
     setBeneficiaries((bens ?? []) as Beneficiary[])
-    setBottles((bots ?? []) as Bottle[]) 
+    setBottles((bots ?? []) as Bottle[])
   }
-  
-  useEffect(() => { void load() }, [])
+
+  useEffect(() => { void load() }, [page, pageSize])
 
   function resetForm() {
     setStep(1)
@@ -192,6 +196,7 @@ export function DispensingScreen({ user }: { user: AppUser }) {
               )}
             </tbody>
           </table>
+          <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={handlePageSizeChange} />
         </div>
       </div>
 
@@ -222,10 +227,11 @@ export function DispensingScreen({ user }: { user: AppUser }) {
                       <div className="relative">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
                         <input 
-                          value={searchRec} 
-                          onChange={(e) => setSearchRec(e.target.value)} 
-                          className="w-full pl-12 pr-4 py-3.5 bg-white border border-zinc-200 rounded-xl text-base outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100 transition-all placeholder:text-zinc-400 shadow-sm" 
-                          placeholder="Margarita Ramos..." 
+                          value={searchRec}
+                          onChange={(e) => setSearchRec(e.target.value)}
+                          className="w-full pl-12 pr-4 py-3.5 bg-white border border-zinc-200 rounded-xl text-base outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100 transition-all placeholder:text-zinc-400 shadow-sm"
+                          placeholder="Margarita Ramos..."
+                          maxLength={100}
                           autoFocus
                         />
                       </div>

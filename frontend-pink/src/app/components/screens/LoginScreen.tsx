@@ -240,6 +240,7 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
                   onChange={(e) => setFullName(e.target.value)}
                   onFocus={() => setFocusedField('fullName')}
                   onBlur={() => setFocusedField(null)}
+                  maxLength={100}
                   className="w-full px-4 py-3 rounded-xl border text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#eea4bb]/30"
                   style={{ background: '#FFFFFF', borderColor: focusedField === 'fullName' ? '#eea4bb' : 'rgba(99,98,96,0.15)', color: '#322e2d', boxShadow: focusedField === 'fullName' ? '0 0 0 3px rgba(238,164,187,0.15)' : 'none' }}
                 />
@@ -262,6 +263,7 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
                 onBlur={() => setFocusedField(null)}
                 spellCheck={false}
                 placeholder="name@mhmb.makati.gov.ph"
+                maxLength={254}
                 className="w-full px-4 py-3 rounded-xl border text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#eea4bb]/30"
                 style={{ background: '#FFFFFF', borderColor: focusedField === 'email' ? '#eea4bb' : 'rgba(99,98,96,0.15)', color: '#322e2d', boxShadow: focusedField === 'email' ? '0 0 0 3px rgba(238,164,187,0.15)' : 'none' }}
               />
@@ -283,6 +285,7 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
                   onFocus={() => setFocusedField('password')}
                   onBlur={() => setFocusedField(null)}
                   placeholder={mode === 'login' ? 'Enter your password' : 'Create a password'}
+                  maxLength={128}
                   className="w-full px-4 py-3 pr-11 rounded-xl border text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#eea4bb]/30"
                   style={{ background: '#FFFFFF', borderColor: focusedField === 'password' ? '#eea4bb' : 'rgba(99,98,96,0.15)', color: '#322e2d', boxShadow: focusedField === 'password' ? '0 0 0 3px rgba(238,164,187,0.15)' : 'none' }}
                 />

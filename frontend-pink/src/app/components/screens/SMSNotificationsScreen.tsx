@@ -124,6 +124,7 @@ export function SMSNotificationsScreen({ user }: { user: AppUser }) {
                     onChange={(e) => setDraftText(e.target.value)}
                     rows={4}
                     aria-label={`Edit ${label} template`}
+                    maxLength={500}
                     className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-3 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all resize-none leading-relaxed"
                   />
                   <div className="flex items-center gap-2 justify-end" aria-live="polite">

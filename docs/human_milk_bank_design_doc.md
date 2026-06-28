@@ -261,6 +261,69 @@ The key distinction in Figures 6–10 is the addition of an automated database s
 
 A human milk bank is a service established for the purpose of collecting, screening, processing, storing and distributing donated human milk to meet the specific medical needs of individuals for whom human milk is prescribed. These individuals include preterm babies, critically-ill neonates with necrotizing enterocolitis, immunodeficiency disease, feeding intolerance, allergies, inborn errors of metabolism, and others especially those who are admitted in NICU (neonatal intensive care unit) in the hospitals.
 
+### Milk Bank Collection Programs
+
+There are three (3) current programs that are used in the Makati Human Milk Bank; these are Milky Way, Mom’s Act and Supsup Todo. The following programs happen outside the Milk Bank itself.
+
+### Supsup Todo (Community/Mobile-based) 
+
+1. Screening (Prelin Lab tests)
+  - Pass the lab test proceed to counseling
+2. Counseling (10-20 minutes)
+3. Interview
+  - Consent Signing
+4. Lactation Massage (10-20 minutes)
+5. Milk Extraction
+6. Bottling and Labeling
+  - Placed in cooler (Cold Chain Method)
+7. Sampling
+  - Get samples less than 5ml
+8. Sends sample to City hall for Lab Testing (2 weeks)
+9. Lab results sent back to the milk bank
+  - Milk that passes the lab test proceed to pasteurization
+  - Milk that fails the lab test are disposed
+10. Pasteurization for milks that passed the Lab tests
+11. Sampling Pasteurized Milk
+12. Send back to Laboratory for testing
+13. Lab results sent back to the milk bank
+  - Milk that passes the lab test are ready for storage and Dispensing
+  - Milk that fails that lab test are disposed
+
+### Milky Way (Hospital-based)
+
+1. Milk Bank staff visits hospital to collect breast milk.  
+2. Bottling and Labeling 
+  - Placed in cooler (Cold Chain Method) 
+3. Sampling 
+  - Get samples less than 5 ml 
+4. Sends sample to City Hall for Lab Testing (2 weeks) 
+5. Lab results sent back to the milk bank 
+  - Milk that passes the lab test proceed to pasteurization 
+  - Milk that fails the lab test are disposed 
+6. Pasteurization for milks that passed the Lab tests 
+7. Sampling Pasteurized Milk 
+8. Send back to Laboratory for testing 
+9. Lab results sent back to the milk bank 
+  - Milk that passes the lab test are ready for storage and Dispensing 
+  - Milk that fails the lab test are disposed 
+
+### Mom's Act (Household-Based)
+
+1. Mother Contacts Milk Bank  
+2. Staff picks up the milk from the household 
+3. Sampling 
+  - Get samples less than 5 ml 
+4. Sends sample to City Hall for Lab Testing (2 weeks) 
+5. Lab results sent back to the milk bank 
+  - Milk that passes the lab test proceed to pasteurization 
+  - Milk that fails the lab test are disposed 
+6. Pasteurization for milks that passed the Lab tests 
+7. Sampling Pasteurized Milk 
+8. Send back to Laboratory for testing 
+9. Lab results sent back to the milk bank 
+  - Milk that passes the lab test are ready for storage and Dispensing 
+  - Milk that fails the lab test are disposed
+
 ### Review of Related Systems
 
 #### 1. TB Inventory Management System (Figure 12 & 13)

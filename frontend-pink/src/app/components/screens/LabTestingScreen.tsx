@@ -1,13 +1,16 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { Plus, X } from 'lucide-react'
 import { PageHeader } from '../shared/PageHeader'
 import { StatusBadge } from '../shared/StatusBadge'
 import { supabase } from '../../../lib/supabase'
-import { formatDate, toTitle } from '../../exportUtils'
+import { formatDate, toTitle, activeProgramToDb } from '../../exportUtils'
+import { useProgramFilter } from '../../../lib/programContext'
+import { usePagination } from '../../hooks/usePagination'
+import { Pagination } from '../shared/Pagination'
 import { motion, AnimatePresence } from 'motion/react'
 
 type BatchCollection = { collections: { ctn: string; donors: { dtn: string } | null } }
-type Batch = { id: string; batch_number: string | null; status: string; batch_collections?: BatchCollection[] }
+type Batch = { id: string; batch_number: string | null; status: string; program?: string; batch_collections?: BatchCollection[] }
 type Lab = {
   id: string
   stage: string
@@ -30,25 +33,41 @@ export function LabTestingScreen() {
   const [testType, setTestType] = useState<'pre_pasteurization' | 'post_pasteurization'>('pre_pasteurization')
   const [testResult, setTestResult] = useState<'passed' | 'failed' | null>(null)
 
+  const activeProgram = useProgramFilter()
+  const { page, pageSize, total, totalPages, from, to, setPage, setTotal, resetPage, handlePageSizeChange } = usePagination()
+  const isFirstRender = useRef(true)
+
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return }
+    resetPage()
+  }, [activeProgram, activeTab])
+
+  useEffect(() => { void load() }, [page, pageSize, activeProgram, activeTab])
+
   async function load(): Promise<void> {
-    const [{ data: labs }, { data: batchRows }] = await Promise.all([
-      supabase
-        .from('lab_results')
-        .select('id,stage,result,sample_volume_ml,sent_to_lab_at,expected_result_at,result_received_at,recorded_by_name,batches(id,batch_number,status,batch_collections(collections(ctn,donors(dtn))))')
-        .order('sent_to_lab_at', { ascending: false }),
-      supabase
-        .from('batches')
-        .select('id,batch_number,status')
-        .in('status', ['raw', 'pre_testing', 'pasteurized', 'post_testing'])
-        .order('created_at', { ascending: false }),
-    ])
+    const dbProgram = activeProgramToDb(activeProgram)
+    let batchesQuery = supabase
+      .from('batches')
+      .select('id,batch_number,status,program')
+      .in('status', ['raw', 'pre_testing', 'pasteurized', 'post_testing'])
+      .order('created_at', { ascending: false })
+    if (dbProgram) batchesQuery = batchesQuery.eq('program', dbProgram)
+
+    let labsQuery = supabase
+      .from('lab_results')
+      .select('id,stage,result,sample_volume_ml,sent_to_lab_at,expected_result_at,result_received_at,recorded_by_name,batches(id,batch_number,status,program,batch_collections(collections(ctn,donors(dtn))))', { count: 'exact' })
+      .eq('stage', activeTab)
+      .order('sent_to_lab_at', { ascending: false })
+      .range(from, to)
+    if (dbProgram) labsQuery = labsQuery.eq('batches.program', dbProgram)
+
+    const [{ data: labs, count }, { data: batchRows }] = await Promise.all([labsQuery, batchesQuery])
     setRows((labs ?? []) as Lab[])
+    setTotal(count ?? 0)
     setBatches((batchRows ?? []) as Batch[])
   }
 
-  useEffect(() => { void load() }, [])
-
-  const filteredRows = useMemo(() => rows.filter(r => r.stage === activeTab), [rows, activeTab])
+  const filteredRows = useMemo(() => rows, [rows])
 
   async function save(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
@@ -196,6 +215,7 @@ export function LabTestingScreen() {
               )}
             </tbody>
           </table>
+          <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={handlePageSizeChange} />
         </div>
       </div>
 
@@ -289,7 +309,7 @@ export function LabTestingScreen() {
                     </div>
                     <div className="space-y-2">
                       <label htmlFor="lab-tested-by" className="text-sm font-medium text-zinc-700">Tested By</label>
-                      <input id="lab-tested-by" name="tested_by" placeholder="e.g., Juan Dela Cruz, M.T." className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-3 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
+                      <input id="lab-tested-by" name="tested_by" placeholder="e.g., Juan Dela Cruz, M.T." maxLength={100} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-3 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
                     </div>
                   </div>
 

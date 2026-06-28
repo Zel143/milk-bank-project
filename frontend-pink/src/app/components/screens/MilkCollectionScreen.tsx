@@ -3,7 +3,10 @@ import { Plus, Search, X, ChevronDown } from 'lucide-react'
 import { PageHeader } from '../shared/PageHeader'
 import { StatusBadge } from '../shared/StatusBadge'
 import { supabase } from '../../../lib/supabase'
-import { fromProgramLabel, formatDate, toProgramLabel } from '../../exportUtils'
+import { fromProgramLabel, formatDate, toProgramLabel, activeProgramToDb } from '../../exportUtils'
+import { useProgramFilter } from '../../../lib/programContext'
+import { usePagination } from '../../hooks/usePagination'
+import { Pagination } from '../shared/Pagination'
 import { motion, AnimatePresence } from 'motion/react'
 
 type Donor = { id: string; dtn: string | null; full_name: string; primary_program: string }
@@ -37,18 +40,44 @@ export function MilkCollectionScreen() {
   const [selectedDonor, setSelectedDonor] = useState<Donor | null>(null)
   const donorRef = useRef<HTMLDivElement>(null)
 
+  const activeProgram = useProgramFilter()
+  const { page, pageSize, total, totalPages, from, to, setPage, setTotal, resetPage, handlePageSizeChange } = usePagination()
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const isFirstRender = useRef(true)
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return }
+    resetPage()
+  }, [debouncedSearch, activeProgram])
+
+  useEffect(() => { void load() }, [page, pageSize, debouncedSearch, activeProgram])
+
   async function load(): Promise<void> {
-    const [{ data: collections }, { data: donorRows }] = await Promise.all([
-      supabase
-        .from('collections')
-        .select('id,ctn,program,volume_ml,collection_mode,collected_at,age_of_baby_days,donors(id,dtn,full_name,primary_program)')
-        .order('collected_at', { ascending: false }),
-      supabase.from('donors').select('id,dtn,full_name,primary_program').order('full_name'),
+    const dbProgram = activeProgramToDb(activeProgram)
+    let collectionsQuery = supabase
+      .from('collections')
+      .select('id,ctn,program,volume_ml,collection_mode,collected_at,age_of_baby_days,donors(id,dtn,full_name,primary_program)', { count: 'exact' })
+      .order('collected_at', { ascending: false })
+      .range(from, to)
+    if (dbProgram) collectionsQuery = collectionsQuery.eq('program', dbProgram)
+    if (debouncedSearch) collectionsQuery = collectionsQuery.ilike('ctn', `%${debouncedSearch}%`)
+
+    let donorsQuery = supabase.from('donors').select('id,dtn,full_name,primary_program').order('full_name')
+    if (dbProgram) donorsQuery = donorsQuery.eq('primary_program', dbProgram)
+
+    const [{ data: collections, count }, { data: donorRows }] = await Promise.all([
+      collectionsQuery,
+      donorsQuery,
     ])
     setRows((collections ?? []) as Collection[])
+    setTotal(count ?? 0)
     setDonors((donorRows ?? []) as Donor[])
   }
-  useEffect(() => { void load() }, [])
 
   // Close donor dropdown on outside click
   useEffect(() => {
@@ -60,11 +89,6 @@ export function MilkCollectionScreen() {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
-
-  const filteredCollections = useMemo(
-    () => rows.filter((row) => [row.ctn, row.donors?.dtn, row.donors?.full_name].join(' ').toLowerCase().includes(search.toLowerCase())),
-    [rows, search]
-  )
 
   const filteredDonors = useMemo(
     () => donors.filter((d) => [d.dtn, d.full_name].join(' ').toLowerCase().includes(donorQuery.toLowerCase())).slice(0, 8),
@@ -157,6 +181,7 @@ export function MilkCollectionScreen() {
             placeholder="Search by CTN, donor name, or DTN…"
             aria-label="Search collections"
             autoComplete="off"
+            maxLength={100}
           />
         </div>
       </div>
@@ -171,7 +196,7 @@ export function MilkCollectionScreen() {
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
-            {filteredCollections.map((row) => (
+            {rows.map((row) => (
               <tr key={row.id} className="hover:bg-zinc-50/50 transition-colors">
                 <td className="px-6 py-4 text-sm font-medium text-pink-400 font-mono">{row.ctn}</td>
                 <td className="px-6 py-4 text-sm text-zinc-900 font-medium">
@@ -187,11 +212,12 @@ export function MilkCollectionScreen() {
                 <td className="px-6 py-4 text-sm text-zinc-600">{formatDate(row.collected_at)}</td>
               </tr>
             ))}
-            {filteredCollections.length === 0 && (
+            {rows.length === 0 && (
               <tr><td colSpan={7} className="px-6 py-8 text-center text-sm text-zinc-400">No collections found</td></tr>
             )}
           </tbody>
         </table>
+        <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={handlePageSizeChange} />
       </div>
 
       <AnimatePresence>
@@ -262,6 +288,7 @@ export function MilkCollectionScreen() {
                         placeholder="Search by name or DTN…"
                         autoComplete="off"
                         spellCheck={false}
+                        maxLength={100}
                         className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 pr-9 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400"
                       />
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" aria-hidden="true" />
@@ -323,13 +350,13 @@ export function MilkCollectionScreen() {
                     </div>
                     <div className="space-y-1.5">
                       <label htmlFor="col-aob" className="text-sm font-medium text-zinc-700">Age of Baby (AOB)</label>
-                      <input id="col-aob" name="aob" placeholder="e.g., 6 weeks…" className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
+                      <input id="col-aob" name="aob" placeholder="e.g., 6 weeks…" maxLength={20} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
                     <label htmlFor="col-by" className="text-sm font-medium text-zinc-700">Collected By</label>
-                    <input id="col-by" name="collected_by" placeholder="e.g., Maria Santos, R.N." className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
+                    <input id="col-by" name="collected_by" placeholder="e.g., Maria Santos, R.N." maxLength={100} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
                   </div>
 
                 </div>

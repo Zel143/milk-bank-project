@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Download, Plus, Search, X, Pencil, Trash2, AlertTriangle } from 'lucide-react'
 import { PageHeader } from '../shared/PageHeader'
 import { StatusBadge } from '../shared/StatusBadge'
 import { supabase } from '../../../lib/supabase'
-import { exportCsv, fromProgramLabel, toProgramLabel, toTitle, type ExportRow } from '../../exportUtils'
+import { exportCsv, fromProgramLabel, toProgramLabel, toTitle, activeProgramToDb, type ExportRow } from '../../exportUtils'
+import { useProgramFilter } from '../../../lib/programContext'
+import { usePagination } from '../../hooks/usePagination'
+import { Pagination } from '../shared/Pagination'
 import { motion, AnimatePresence } from 'motion/react'
 
 type DonorRow = {
@@ -44,20 +47,38 @@ export function DonorManagementScreen() {
   const [deleteTarget, setDeleteTarget] = useState<DonorRow | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  const activeProgram = useProgramFilter()
+  const { page, pageSize, total, totalPages, from, to, setPage, setTotal, resetPage, handlePageSizeChange } = usePagination()
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const isFirstRender = useRef(true)
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return }
+    resetPage()
+  }, [debouncedSearch, activeProgram])
+
+  useEffect(() => { void load() }, [page, pageSize, debouncedSearch, activeProgram])
+
   async function load(): Promise<void> {
-    const { data } = await supabase
+    const dbProgram = activeProgramToDb(activeProgram)
+    let query = supabase
       .from('donors')
-      .select('id,dtn,full_name,primary_program,classification,contact_number,address,screening_status,date_of_birth,occupation,civil_status,created_at')
+      .select('id,dtn,full_name,primary_program,classification,contact_number,address,screening_status,date_of_birth,occupation,civil_status,created_at', { count: 'exact' })
       .order('created_at', { ascending: false })
+      .range(from, to)
+    if (dbProgram) query = query.eq('primary_program', dbProgram)
+    if (debouncedSearch) query = query.or(`full_name.ilike.%${debouncedSearch}%,dtn.ilike.%${debouncedSearch}%,contact_number.ilike.%${debouncedSearch}%`)
+    const { data, count } = await query
     setRows((data ?? []) as DonorRow[])
+    setTotal(count ?? 0)
   }
 
-  useEffect(() => { void load() }, [])
-
-  const filtered = useMemo(
-    () => rows.filter((row) => [row.dtn, row.full_name, row.contact_number].join(' ').toLowerCase().includes(search.toLowerCase())),
-    [rows, search]
-  )
+  const filtered = useMemo(() => rows, [rows])
   const exportRows: ExportRow[] = filtered.map((row) => ({
     DTN: row.dtn, Name: row.full_name, Program: toProgramLabel(row.primary_program),
     Classification: toTitle(row.classification), Contact: row.contact_number, Status: toTitle(row.screening_status),
@@ -169,6 +190,7 @@ export function DonorManagementScreen() {
             placeholder="Search by name, DTN, or contact…"
             aria-label="Search donors"
             autoComplete="off"
+            maxLength={100}
           />
         </div>
       </div>
@@ -211,11 +233,12 @@ export function DonorManagementScreen() {
                 </td>
               </tr>
             ))}
-            {filtered.length === 0 && (
+            {rows.length === 0 && (
               <tr><td colSpan={7} className="px-6 py-8 text-center text-sm text-zinc-400">No donors found</td></tr>
             )}
           </tbody>
         </table>
+        <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={handlePageSizeChange} />
       </div>
 
       {/* Delete Confirmation */}
@@ -343,18 +366,18 @@ export function DonorManagementScreen() {
 
                       <div className="space-y-1.5">
                         <label htmlFor="donor-name" className="text-sm font-medium text-zinc-700">Full Name <span className="text-pink-400">*</span></label>
-                        <input id="donor-name" name="full_name" required defaultValue={editRow?.full_name ?? ''} placeholder="First Middle Last" autoComplete="name" className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
+                        <input id="donor-name" name="full_name" required defaultValue={editRow?.full_name ?? ''} placeholder="First Middle Last" autoComplete="name" maxLength={100} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
                       </div>
 
                       <div className="space-y-1.5">
                         <label htmlFor="donor-address" className="text-sm font-medium text-zinc-700">Home Address <span className="text-pink-400">*</span></label>
-                        <input id="donor-address" name="address" required defaultValue={editRow?.address ?? ''} placeholder="House No., Street, Barangay, City" autoComplete="street-address" className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
+                        <input id="donor-address" name="address" required defaultValue={editRow?.address ?? ''} placeholder="House No., Street, Barangay, City" autoComplete="street-address" maxLength={255} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
                       </div>
 
                       <div className="grid grid-cols-2 gap-6">
                         <div className="space-y-1.5">
                           <label htmlFor="donor-contact" className="text-sm font-medium text-zinc-700">Contact Number <span className="text-pink-400">*</span></label>
-                          <input id="donor-contact" name="contact_number" required type="tel" defaultValue={editRow?.contact_number ?? ''} placeholder="09XXXXXXXXX" autoComplete="tel" spellCheck={false} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm font-mono outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
+                          <input id="donor-contact" name="contact_number" required type="tel" defaultValue={editRow?.contact_number ?? ''} placeholder="09XXXXXXXXX" autoComplete="tel" spellCheck={false} maxLength={11} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm font-mono outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
                         </div>
                         <div className="space-y-1.5">
                           <label htmlFor="donor-dob" className="text-sm font-medium text-zinc-700">Date of Birth</label>
@@ -365,7 +388,7 @@ export function DonorManagementScreen() {
                       <div className="grid grid-cols-2 gap-6">
                         <div className="space-y-1.5">
                           <label htmlFor="donor-occupation" className="text-sm font-medium text-zinc-700">Occupation</label>
-                          <input id="donor-occupation" name="occupation" defaultValue={editRow?.occupation ?? ''} placeholder="e.g., Homemaker" autoComplete="organization-title" className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
+                          <input id="donor-occupation" name="occupation" defaultValue={editRow?.occupation ?? ''} placeholder="e.g., Homemaker" autoComplete="organization-title" maxLength={50} className="w-full rounded-xl bg-zinc-50/50 border border-zinc-200 px-4 py-2.5 text-sm outline-none focus-visible:border-pink-300 focus-visible:ring-2 focus-visible:ring-pink-100 transition-all placeholder:text-zinc-400" />
                         </div>
                         <div className="space-y-1.5">
                           <label htmlFor="donor-civil" className="text-sm font-medium text-zinc-700">Civil Status</label>
