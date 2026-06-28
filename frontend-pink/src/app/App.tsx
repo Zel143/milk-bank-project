@@ -72,54 +72,103 @@ export default function App() {
   const [isInitializing, setIsInitializing] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setIsInitializing(false)
+        return
+      }
+      if (event === 'TOKEN_REFRESHED') return
       if (session?.user) {
-        loadProfile(session.user.id, session.user.email!)
+        loadProfile(session.user.id, session.user.email!, session.user.user_metadata)
       } else {
         setIsInitializing(false)
       }
     })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        loadProfile(session.user.id, session.user.email!)
-      } else {
-        setUser(null)
-      }
-    })
-
     return () => subscription.unsubscribe()
   }, [])
 
-  async function loadProfile(userId: string, email: string) {
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
-    if (error || !data) {
-      // If we are signed in but have no profile, sign out
+  async function loadProfile(
+    userId: string,
+    email: string,
+    userMeta?: Record<string, unknown>,
+  ): Promise<void> {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No profile row yet — auto-create from signup metadata (first login after email confirm)
+        const fullName = typeof userMeta?.full_name === 'string' ? userMeta.full_name.trim() : ''
+        if (!fullName) {
+          await supabase.auth.signOut()
+          setUser(null)
+          setStatusError('Account setup is incomplete. Please contact an administrator.')
+          setIsInitializing(false)
+          return
+        }
+
+        const { data: newProfile, error: insertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: userId,
+            email: email.toLowerCase(),
+            full_name: fullName,
+            role: 'staff',
+            is_active: true,
+          })
+          .select()
+          .single()
+
+        if (insertError || !newProfile) {
+          await supabase.auth.signOut()
+          setUser(null)
+          setStatusError(
+            insertError?.message
+              ? `Account setup failed: ${insertError.message}`
+              : 'Account setup failed. Please contact an administrator.',
+          )
+          setIsInitializing(false)
+          return
+        }
+
+        applyProfile(newProfile)
+        return
+      }
+
       await supabase.auth.signOut()
       setUser(null)
-      setStatusError('No access profile found for this account. Please wait for an admin to set up your profile.')
+      setStatusError('Failed to load your profile. Please try again.')
       setIsInitializing(false)
-      return false
+      return
     }
 
     if (!data.is_active) {
       await supabase.auth.signOut()
       setUser(null)
-      setStatusError('That account is disabled. An administrator must reactivate it before sign in.')
+      setStatusError('Your account has been deactivated. Contact an administrator to reactivate it.')
       setIsInitializing(false)
-      return false
+      return
     }
 
-    const initials = data.full_name
-      .split(' ')
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part: string) => part[0]?.toUpperCase() ?? '')
-      .join('') || 'MH'
+    applyProfile(data)
+  }
+
+  function applyProfile(data: { full_name: string; role: string }) {
+    const initials =
+      data.full_name
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part: string) => part[0]?.toUpperCase() ?? '')
+        .join('') || 'MH'
 
     setUser({
       name: data.full_name,
-      role: data.role === 'admin' ? 'Administrator' : 'Nurse', // In a real app we'd map this properly or use an extended role column
+      role: data.role === 'admin' ? 'Administrator' : 'Nurse',
       initials,
     })
     setIsInitializing(false)
@@ -134,49 +183,50 @@ export default function App() {
     })
 
     if (error) {
-      setStatusError(error.message)
+      const msg = error.message ?? ''
+      if (msg.toLowerCase().includes('email not confirmed')) {
+        setStatusError('Please confirm your email first — check your inbox for the confirmation link.')
+      } else if (msg.toLowerCase().includes('invalid login credentials')) {
+        setStatusError('Incorrect email or password. Please try again.')
+      } else if (msg.toLowerCase().includes('too many requests')) {
+        setStatusError('Too many attempts. Please wait a moment before trying again.')
+      } else {
+        setStatusError(msg || 'Sign in failed. Please try again.')
+      }
     }
   }
 
   async function handleRegisterRequest(account: CreateAccessAccountInput): Promise<boolean> {
     setStatusError(undefined)
     setStatusNotice(undefined)
-    const { data, error } = await supabase.auth.signUp({
+
+    const { error } = await supabase.auth.signUp({
       email: account.email,
       password: account.password,
       options: {
         data: {
           full_name: account.fullName,
           role: 'staff',
-        }
-      }
+        },
+      },
     })
 
     if (error) {
-      setStatusError(error.message)
+      const msg = error.message ?? ''
+      if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('user already exists')) {
+        setStatusError('An account with that email already exists. Try signing in instead.')
+      } else {
+        setStatusError(msg || 'Registration failed. Please try again.')
+      }
       return false
     }
 
-    if (data.user) {
-      // Create profile manually since this frontend does not rely on a database trigger yet.
-      const { error: profileError } = await supabase.from('profiles').upsert({
-        id: data.user.id,
-        email: account.email.toLowerCase(),
-        full_name: account.fullName,
-        role: 'staff',
-        is_active: true,
-      }, { onConflict: 'id' })
-
-      if (profileError) {
-        setStatusError('Account created but failed to stage profile: ' + profileError.message)
-        return false
-      }
-
-      // Supabase signUp automatically logs in if email confirmation is off. 
-      // We log them out immediately since they are inactive.
-      await supabase.auth.signOut()
-      setStatusNotice(`${account.fullName} was staged and is waiting for admin activation.`)
-    }
+    // Email confirmation is required — session is null until the link is clicked.
+    // The profile row is created automatically on first sign-in after confirmation.
+    setStatusNotice(
+      `Check your inbox at ${account.email} and click the confirmation link to activate your account.`,
+    )
+    return true
   }
 
   async function handleLogout() {
