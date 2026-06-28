@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Droplets, Eye, EyeOff, Heart, Shield, Zap } from 'lucide-react'
+import { Droplets, Eye, EyeOff } from 'lucide-react'
 import type { AccessRole, CreateAccessAccountInput } from '../../types'
 import { supabase } from '../../../lib/supabase'
 
@@ -22,6 +22,7 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
   const [focusedField, setFocusedField] = useState<string | null>(null)
   const submitTimerRef = useRef<number | null>(null)
   const [stats, setStats] = useState({ donors: 0, mlReady: 0, waiting: 0 })
+  const [batchCounts, setBatchCounts] = useState({ raw: 0, pre_testing: 0, pasteurized: 0, post_testing: 0, ready: 0 })
 
   useEffect(() => {
     if (prefillEmail) {
@@ -31,18 +32,26 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
 
   useEffect(() => {
     async function loadStats() {
-      const [donors, batches, inquiries] = await Promise.all([
+      const [donors, batches, inquiries, batchStatusResult] = await Promise.all([
         supabase.from('donors').select('id', { count: 'exact' }),
         supabase.from('batches').select('total_volume_ml').eq('status', 'ready'),
-        supabase.from('inquiries').select('id', { count: 'exact' }).eq('status', 'waiting')
+        supabase.from('inquiries').select('id', { count: 'exact' }).eq('status', 'waiting'),
+        supabase.from('batches').select('status').in('status', ['raw', 'pre_testing', 'pasteurized', 'post_testing', 'ready'])
       ])
-      
+
       const mlReady = (batches.data || []).reduce((sum, b) => sum + Number(b.total_volume_ml || 0), 0)
       setStats({
         donors: donors.count || 0,
         mlReady,
         waiting: inquiries.count || 0
       })
+
+      const counts = { raw: 0, pre_testing: 0, pasteurized: 0, post_testing: 0, ready: 0 }
+      for (const b of batchStatusResult.data ?? []) {
+        const k = b.status as keyof typeof counts
+        if (k in counts) counts[k]++
+      }
+      setBatchCounts(counts)
     }
     void loadStats()
   }, [])
@@ -106,32 +115,53 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
             </div>
           </div>
 
-          <div className="mb-14">
-            <h1 className="text-4xl text-white mb-6 leading-[1.15] font-bold tracking-tight">
-              Connecting Donors.<br />
-              <span style={{ color: '#eea4bb' }}>Nourishing Lives.</span>
+          <div className="mb-12">
+            <h1 className="text-[34px] text-white leading-[1.1] font-bold tracking-tight mb-4">
+              Makati's chain<br />
+              <span style={{ color: '#eea4bb' }}>of care.</span>
             </h1>
-            <p className="text-[15px] leading-relaxed text-[#9a9694] max-w-[340px]">
-              A premium clinical operations platform for the Makati Human Milk Bank, serving the smallest and most vulnerable lives since 2013.
+            <p className="text-[14px] leading-relaxed text-[#7a7573] max-w-[300px]">
+              Since 2013, every milliliter of donated milk is logged, tested, and traced to the NICU baby who needs it.
             </p>
           </div>
 
-          <div className="space-y-6">
-            {[
-              { icon: Shield, label: 'Medical-grade data security' },
-              { icon: Zap, label: 'Real-time batch lifecycle tracking' },
-              { icon: Heart, label: 'NICU-priority dispensing workflows' },
-            ].map((feature) => {
-              const Icon = feature.icon
-              return (
-                <div key={feature.label} className="flex items-center gap-4">
-                  <div className="w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-                    <Icon className="w-4 h-4" style={{ color: '#eea4bb' }} />
+          <div>
+            <div className="text-[10px] font-mono tracking-[0.15em] uppercase mb-5" style={{ color: '#4a4645' }}>
+              Live Batch Pipeline
+            </div>
+            <div className="relative flex items-start">
+              <div className="absolute top-3.5 left-[10%] right-[10%] h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
+              {([
+                { key: 'raw' as const, label: 'Collected' },
+                { key: 'pre_testing' as const, label: 'Lab I' },
+                { key: 'pasteurized' as const, label: 'Pasteurized' },
+                { key: 'post_testing' as const, label: 'Lab II' },
+                { key: 'ready' as const, label: 'Ready' },
+              ] as const).map((stage) => {
+                const count = batchCounts[stage.key]
+                const active = count > 0
+                return (
+                  <div key={stage.key} className="flex-1 flex flex-col items-center">
+                    <div
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-mono font-bold z-10 relative transition-all duration-300"
+                      style={{
+                        background: active ? 'rgba(238,164,187,0.12)' : 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${active ? 'rgba(238,164,187,0.35)' : 'rgba(255,255,255,0.06)'}`,
+                        color: active ? '#eea4bb' : '#4a4645',
+                      }}
+                    >
+                      {count}
+                    </div>
+                    <div
+                      className="text-[9px] uppercase tracking-wide mt-2 text-center leading-tight px-0.5"
+                      style={{ color: active ? '#7a7573' : '#4a4645' }}
+                    >
+                      {stage.label}
+                    </div>
                   </div>
-                  <span className="text-[15px] text-[#bdbdbb]">{feature.label}</span>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
         </div>
 
