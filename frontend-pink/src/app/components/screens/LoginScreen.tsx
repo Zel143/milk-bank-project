@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Droplets, Eye, EyeOff } from 'lucide-react'
-import type { AccessRole, CreateAccessAccountInput } from '../../types'
+import type { CreateAccessAccountInput } from '../../types'
 import { supabase } from '../../../lib/supabase'
 
 interface LoginScreenProps {
-  onLogin: (credentials: { email: string; password: string }) => void
+  onLogin: (credentials: { email: string; password: string }) => Promise<void>
   onRegisterRequest: (account: CreateAccessAccountInput) => Promise<boolean>
   notice?: string
   error?: string
@@ -20,14 +20,13 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [focusedField, setFocusedField] = useState<string | null>(null)
+  const [localError, setLocalError] = useState<string | undefined>(undefined)
   const submitTimerRef = useRef<number | null>(null)
   const [stats, setStats] = useState({ donors: 0, mlReady: 0, waiting: 0 })
   const [batchCounts, setBatchCounts] = useState({ raw: 0, pre_testing: 0, pasteurized: 0, post_testing: 0, ready: 0 })
 
   useEffect(() => {
-    if (prefillEmail) {
-      setEmail(prefillEmail)
-    }
+    if (prefillEmail) setEmail(prefillEmail)
   }, [prefillEmail])
 
   useEffect(() => {
@@ -36,15 +35,11 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
         supabase.from('donors').select('id', { count: 'exact' }),
         supabase.from('batches').select('total_volume_ml').eq('status', 'ready'),
         supabase.from('inquiries').select('id', { count: 'exact' }).eq('status', 'waiting'),
-        supabase.from('batches').select('status').in('status', ['raw', 'pre_testing', 'pasteurized', 'post_testing', 'ready'])
+        supabase.from('batches').select('status').in('status', ['raw', 'pre_testing', 'pasteurized', 'post_testing', 'ready']),
       ])
 
-      const mlReady = (batches.data || []).reduce((sum, b) => sum + Number(b.total_volume_ml || 0), 0)
-      setStats({
-        donors: donors.count || 0,
-        mlReady,
-        waiting: inquiries.count || 0
-      })
+      const mlReady = (batches.data ?? []).reduce((sum, b) => sum + Number(b.total_volume_ml || 0), 0)
+      setStats({ donors: donors.count ?? 0, mlReady, waiting: inquiries.count ?? 0 })
 
       const counts = { raw: 0, pre_testing: 0, pasteurized: 0, post_testing: 0, ready: 0 }
       for (const b of batchStatusResult.data ?? []) {
@@ -58,43 +53,43 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
 
   useEffect(() => {
     return () => {
-      if (submitTimerRef.current !== null) {
-        window.clearTimeout(submitTimerRef.current)
-      }
+      if (submitTimerRef.current !== null) window.clearTimeout(submitTimerRef.current)
     }
   }, [])
 
-  function handleLoginSubmit(e: React.FormEvent<HTMLFormElement>): void {
-    e.preventDefault()
-    setLoading(true)
-
-    if (submitTimerRef.current !== null) {
-      window.clearTimeout(submitTimerRef.current)
-    }
-
-    submitTimerRef.current = window.setTimeout(() => {
-      onLogin({ email, password })
-      setLoading(false)
-    }, 450)
+  function switchMode(next: 'login' | 'register') {
+    setMode(next)
+    setPassword('')
+    setLocalError(undefined)
   }
 
-  function handleRegisterSubmit(e: React.FormEvent<HTMLFormElement>): void {
+  async function handleLoginSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault()
+    setLocalError(undefined)
     setLoading(true)
+    await onLogin({ email, password })
+    setLoading(false)
+  }
 
-    if (submitTimerRef.current !== null) {
-      window.clearTimeout(submitTimerRef.current)
+  async function handleRegisterSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault()
+    setLocalError(undefined)
+
+    if (password.length < 6) {
+      setLocalError('Password must be at least 6 characters.')
+      return
     }
 
-    submitTimerRef.current = window.setTimeout(() => {
-      onRegisterRequest({
-        fullName,
-        email,
-        password,
-      })
-      setLoading(false)
+    setLoading(true)
+    const success = await onRegisterRequest({ fullName, email, password })
+    setLoading(false)
+
+    if (success) {
+      // Keep email pre-filled so they can sign in after confirming
+      setFullName('')
+      setPassword('')
       setMode('login')
-    }, 450)
+    }
   }
 
   return (
@@ -219,7 +214,7 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
           <div className="mb-6 inline-flex rounded-2xl border p-1" style={{ background: '#FFFFFF', borderColor: 'rgba(99,98,96,0.12)' }}>
             <button
               type="button"
-              onClick={() => setMode('login')}
+              onClick={() => switchMode('login')}
               className="px-4 py-2 text-sm rounded-xl transition-colors"
               style={{ background: mode === 'login' ? '#eea4bb' : 'transparent', color: '#322e2d', fontWeight: 700 }}
             >
@@ -227,7 +222,7 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
             </button>
             <button
               type="button"
-              onClick={() => setMode('register')}
+              onClick={() => switchMode('register')}
               className="px-4 py-2 text-sm rounded-xl transition-colors"
               style={{ background: mode === 'register' ? '#eea4bb' : 'transparent', color: '#322e2d', fontWeight: 700 }}
             >
@@ -236,21 +231,24 @@ export function LoginScreen({ onLogin, onRegisterRequest, notice, error, prefill
           </div>
 
           <AnimatePresence>
-            {(notice || error) && (
+            {(localError || error || notice) && (
               <motion.div
+                key={localError ?? error ?? notice}
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-                className="mb-4 rounded-xl border px-4 py-3 text-sm"
+                className="mb-4 rounded-xl border px-4 py-3 text-sm leading-relaxed"
                 style={{
-                  background: error ? '#FFF0F2' : '#F8F0F4',
-                  borderColor: error ? 'rgba(192,64,64,0.22)' : 'rgba(238,164,187,0.28)',
+                  background: (localError || error) ? '#FFF0F2' : '#F0F7F4',
+                  borderColor: (localError || error)
+                    ? 'rgba(192,64,64,0.22)'
+                    : 'rgba(52,168,83,0.22)',
                   color: '#322e2d',
                 }}
                 aria-live="polite"
               >
-                {error ?? notice}
+                {localError ?? error ?? notice}
               </motion.div>
             )}
           </AnimatePresence>
